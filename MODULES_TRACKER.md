@@ -62,6 +62,7 @@ Team members should mark completed items by changing `[ ]` to `[x]`.
 - [ ] **Allocate Base Budget** (Admin / Company User)
 - [ ] **Initialize Project Ledger**
   - [ ] Monitor Budget Burn Rate (`«include»`)
+- [ ] **Transaction and Expense Logging** (Record project expenses, credit/debit transaction audit trails, categorization)
 - [ ] **Reallocate Funds Across Projects**
 - [ ] **Flag Budget Overrun Alerts** (`«extend»`)
 - [ ] **Generate P&L Report**
@@ -78,4 +79,4 @@ Team members should mark completed items by changing `[ ]` to `[x]`.
 | **2. Company & Workforce** | 5 | ⚪ Pending |
 | **3. Project Management** | 5 | ⚪ Pending |
 | **4. Resource Allocation** | 3 | ⚪ Pending |
-| **5. Financial Management** | 6 | ⚪ Pending |
+| **5. Financial Management** | 7 | ⚪ Pending |
