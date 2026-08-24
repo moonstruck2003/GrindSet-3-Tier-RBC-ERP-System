@@ -37,6 +37,7 @@ import {
   FileCheck2
 } from 'lucide-react';
 import { fetchApiHealth, fetchErdSummary, API_BASE_URL } from './config/api';
+import GrindsetLogoNodes from './components/GrindsetLogoNodes';
 
 export default function App() {
   // Day Mode enabled by default as requested!
@@ -100,25 +101,26 @@ export default function App() {
   return (
     <div className={`min-h-screen font-sans transition-colors duration-200 ${lightMode ? 'bg-[#FFFFFF] text-[#091E42]' : 'bg-[#07132B] text-[#F4F5F7]'}`}>
       
-      {/* 1. Global Navigation Header (Wide Edge-to-Edge Layout matching Screenshot) */}
+      {/* 1. Global Navigation Header with 3-Tier Node Logo */}
       <header className={`sticky top-0 z-50 border-b transition-colors duration-200 ${lightMode ? 'bg-white border-[#DFE1E6]' : 'bg-[#07132B] border-[#1E2D4A]'} backdrop-blur-md`}>
-        <div className="w-full px-4 sm:px-8 lg:px-12 flex items-center justify-between py-0 h-14">
+        <div className="w-full px-4 sm:px-8 lg:px-12 flex items-center justify-between py-0 h-16">
           
           <div className="flex items-center space-x-6">
             {/* Top-Left Atlassian Blue Square Badge */}
-            <div className="w-12 h-14 bg-[#0052CC] flex items-center justify-center text-white -ml-4 sm:-ml-8 lg:-ml-12 font-black text-xl shadow-md">
+            <div className="w-12 h-16 bg-[#0052CC] flex items-center justify-center text-white -ml-4 sm:-ml-8 lg:-ml-12 font-black text-xl shadow-md">
               <svg className="w-6 h-6 fill-current text-white" viewBox="0 0 24 24">
                 <path d="M11.53 2C6.45 2 2.31 6.14 2.31 11.22c0 5.08 4.14 9.22 9.22 9.22 5.08 0 9.22-4.14 9.22-9.22C20.75 6.14 16.61 2 11.53 2zm4.71 13.06l-4.71 2.72-4.71-2.72v-5.44l4.71-2.72 4.71 2.72v5.44z" />
               </svg>
             </div>
 
-            {/* Logo Text */}
-            <div className="flex items-center space-x-2.5 cursor-pointer pl-2">
-              <div className="w-7 h-7 rounded bg-[#0052CC] flex items-center justify-center text-white font-black text-sm">
-                G
-              </div>
-              <span className="font-extrabold text-xl tracking-tight">Jira <span className="text-xs text-[#0052CC] font-semibold font-mono">/ GrindSet ERP</span></span>
-            </div>
+            {/* Official GrindSet 3-Tier RBC Node Logo Component */}
+            <motion.div
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="flex items-center cursor-pointer pl-2"
+            >
+              <GrindsetLogoNodes isDark={!lightMode} className="w-48 h-auto" />
+            </motion.div>
 
             {/* Menu Links */}
             <nav className="hidden lg:flex items-center space-x-6 text-sm font-semibold pl-4">
@@ -488,7 +490,7 @@ export default function App() {
         </div>
       </section>
 
-      {/* 6. Scaling Pipeline Section (Screenshot 5) */}
+      {/* 6. Scaling Pipeline Section */}
       <section className="py-20 px-6 sm:px-12 lg:px-16 w-full max-w-[1650px] mx-auto text-center">
         <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">
           Built for teams of 1 to 35,000
@@ -528,13 +530,10 @@ export default function App() {
       <footer className={`border-t py-10 px-6 sm:px-12 lg:px-16 w-full max-w-[1650px] mx-auto text-xs ${lightMode ? 'border-[#DFE1E6] text-[#5E6C84]' : 'border-[#1E2D4A] text-[#8993A4]'}`}>
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6 text-center sm:text-left">
           <div className="flex items-center space-x-3">
-            <div className="w-6 h-6 rounded bg-[#0052CC] flex items-center justify-center text-white font-bold text-xs">
-              J
-            </div>
-            <span className="font-bold text-sm">Jira Software by Atlassian</span>
+            <GrindsetLogoNodes isDark={!lightMode} className="w-40 h-auto" />
           </div>
           <div className="text-sm">Powered by .NET 8 ASP.NET Core API & React 18</div>
-          <div className="text-sm">© 2026 Atlassian. All rights reserved.</div>
+          <div className="text-sm">© 2026 GrindSet ERP. All rights reserved.</div>
         </div>
       </footer>
 
@@ -557,9 +556,9 @@ export default function App() {
 
               <div className="text-center mb-6">
                 <div className="w-10 h-10 rounded bg-[#0052CC] text-white font-bold flex items-center justify-center mx-auto mb-2 text-lg">
-                  J
+                  G
                 </div>
-                <h3 className="text-xl font-bold">Jira Software Access</h3>
+                <h3 className="text-xl font-bold">GrindSet ERP Access</h3>
                 <p className={`text-xs mt-1 ${lightMode ? 'text-[#5E6C84]' : 'text-[#8993A4]'}`}>Select a role profile to log in</p>
               </div>
 
@@ -607,7 +606,7 @@ export default function App() {
                   }}
                   className="w-full py-2.5 rounded btn-jira-gold text-sm shadow transition-all mt-2"
                 >
-                  Log In to Jira Software
+                  Log In to GrindSet ERP
                 </button>
               </div>
             </motion.div>
