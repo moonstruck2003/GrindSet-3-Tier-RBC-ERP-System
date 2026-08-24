@@ -1,0 +1,6 @@
+@GrindSet.Api_HostAddress = http://localhost:5289
+
+GET {{GrindSet.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

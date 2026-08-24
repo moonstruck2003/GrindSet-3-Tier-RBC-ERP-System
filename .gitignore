@@ -1,0 +1,48 @@
+# ==========================================
+# GrindSet ERP Monorepo .gitignore
+# ==========================================
+
+# Node & Frontend Build Artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# .NET Build Output & Binaries
+backend/**/bin/
+backend/**/obj/
+backend/**/out/
+*.user
+*.userosscache
+*.sln.docstates
+
+# IDE & Editor Settings
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+*.swp
+*~
+
+# Operating System Files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# SQLite Database Files (Runtime locks ignored, main db ignored if local)
+*.db-shm
+*.db-wal
+backend/GrindSet.Api/grindset.db
+backend/GrindSet.Api/grindset.db-*
+
+# Preserve EF Core Migrations for GitHub DB Sync across team members!
+!backend/GrindSet.Api/Migrations/*
