@@ -1,68 +1,17 @@
-# 🚀 GrindSet - Enterprise Project Management & ERP System
+# 🚀 GrindSet - 3 Tier RBC ERP System
 
-**GrindSet** is a high-performance Enterprise Project Management & ERP platform built with a **.NET 8 ASP.NET Core Web API** backend (featuring Entity Framework Core, SQLite, and Swagger) and a **React + Tailwind CSS + Framer Motion** frontend scaffolded via Vite.
+**GrindSet** is an Enterprise Project Management & ERP platform built with a **.NET 8 ASP.NET Core Web API** backend (featuring Entity Framework Core, SQLite, 20 ERD tables, and Swagger OpenAPI) and a **React + Tailwind CSS** frontend scaffolded via Vite.
 
-The repository is structured as a clean full-stack monorepo designed for a **3-member engineering team working remotely from home over separate networks using GitHub**.
-
----
-
-## 🛠️ System Tech Stack & UI Design Ecosystem
-
-| Layer | Technology | Purpose & Usage Guidelines |
-| :--- | :--- | :--- |
-| **Backend** | .NET 8 ASP.NET Core Minimal Web API | REST APIs, Swagger / OpenAPI docs, CORS middleware |
-| **ORM & DB** | Entity Framework Core 8 + SQLite | 20-Table ERD schema, Code-First migrations, Auto-seeder |
-| **Frontend** | React 18 (scaffolded via Vite) | Component architecture, fast HMR dev server |
-| **Animations** | **motion.dev** (Framer Motion) | Smooth hover effects (`whileHover`), drag interactions (`drag="x"`), and layout transitions |
-| **Analytics Visuals** | **BKlit.ui** Data Visuals | Animated velocity charts, budget allocation bars, and telemetry gauges |
-| **Component Suite** | **Kokonut.ui** Readymade Components | Bento grid cards, command palette search bars (`⌘K`), and badge indicators |
-| **Styling** | Tailwind CSS v4 + PostCSS | Dark navy Jira theme (`#07132B`) & gold accent buttons (`#FFC400`) |
-| **Icons** | Lucide React | Modern enterprise vector icons |
+The repository is structured as a full-stack monorepo designed for a **3-person engineering team working remotely over GitHub**.
 
 ---
 
-## 🎨 UI Component Design Patterns (for Team Development)
+## 📋 System Prerequisites
 
-When extending the frontend with new features or dashboard views, utilize these established patterns:
+Before running the project, ensure your development machine has:
 
-### 1. motion.dev Interactive Micro-Interactions
-```jsx
-// Hover & Tap Spring Physics
-<motion.button
-  whileHover={{ scale: 1.05 }}
-  whileTap={{ scale: 0.95 }}
-  className="btn-jira-gold px-6 py-3 rounded font-bold"
->
-  Get Started
-</motion.button>
-
-// Horizontal Drag Task Card
-<motion.div
-  drag="x"
-  dragConstraints={{ left: -20, right: 20 }}
-  whileHover={{ scale: 1.02 }}
-  className="p-3 rounded bg-[#172B4D] cursor-grab active:cursor-grabbing"
->
-  Task Item
-</motion.div>
-```
-
-### 2. BKlit.ui Data Visuals & Charts
-- Place animated bar charts and metric gauges inside `.jira-dark-card` containers.
-- Use `#00C7E6` (Mint Cyan) for sprint velocity and `#0052CC` (Atlassian Blue) for budget ledgers.
-
-### 3. Kokonut.ui Bento Cards & Command Palette
-- Layout subsystem feature cards using Kokonut.ui 3-column bento grids (`grid md:grid-cols-3 gap-6`).
-- Include `⌘K` command palette shortcuts in header navigation bars.
-
----
-
-## 📋 Prerequisites
-
-Before running the project, ensure your development machine has the following installed:
-
-1. **.NET 8 SDK** (or .NET 9 SDK): `dotnet --version`
-2. **Node.js (v18+) & npm**: `node -v` and `npm -v`
+1. **.NET 8 SDK** (or .NET 9 SDK): Check version via `dotnet --version`
+2. **Node.js (v18+) & npm**: Check versions via `node -v` and `npm -v`
 3. **EF Core Global CLI Tool**:
    ```bash
    dotnet tool install --global dotnet-ef
@@ -70,26 +19,29 @@ Before running the project, ensure your development machine has the following in
 
 ---
 
-## 🚀 How to Run the Project (Step-by-Step for Team Members)
+## ⚡ How to Run the Project (Step-by-Step)
 
-### Step 1: Start the ASP.NET Core Backend API
-Open a terminal window:
+Follow these simple steps to start both backend and frontend services:
+
+### Step 1: Start the ASP.NET Core Backend API & Database
+Open your first terminal window:
 
 ```bash
-# Navigate to backend directory:
-cd GrindSet-ERP/backend/GrindSet.Api
+# 1. Navigate to backend project directory:
+cd backend/GrindSet.Api
 
-# Run the API server (automatically applies EF Core migrations & seeds 20 ERD tables)
+# 2. Run the ASP.NET Core Web API server:
 dotnet run
 ```
 
-- **Swagger API Documentation**: Open **`http://localhost:5000/swagger`** or **`https://localhost:7xxx/swagger`** in your browser.
+- **Database Initialization**: On startup, EF Core automatically creates the SQLite database (`grindset.db`), executes pending migrations, and seeds baseline enterprise data across all 20 ERD tables.
+- **Swagger Interactive API Documentation**: Open **`http://localhost:5000/swagger`** in your browser.
 - **REST Endpoints Available**:
-  - `GET /api/health` — Backend system status
-  - `GET /api/subsystems` — List of 6 GrindSet ERP subsystems
+  - `GET /api/health` — System & database connection status
+  - `GET /api/subsystems` — 6 GrindSet ERP Subsystems list
   - `GET /api/projects` — Enterprise projects list
   - `GET /api/users` — User accounts & roles
-  - `GET /api/erd-summary` — 20-table ERD entity counts
+  - `GET /api/erd-summary` — 20-table ERD summary counts
 
 ---
 
@@ -97,77 +49,75 @@ dotnet run
 Open a **second terminal window**:
 
 ```bash
-# Navigate to frontend directory:
-cd GrindSet-ERP/frontend
+# 1. Navigate to frontend directory:
+cd frontend
 
-# Install dependencies (only needed first time)
+# 2. Install dependencies (only required the first time):
 npm install
 
-# Start Vite live development server
+# 3. Start the Vite development server:
 npm run dev
 ```
 
-- **Jira Website Replica UI**: Open **`http://localhost:5173`** in your browser.
+- **Jira Landing Page & ERP Portal UI**: Open **`http://localhost:5173/`** in your browser.
+- **Day / Dark Theme Toggle**: The application launches in **Day Mode by default** with a Sun/Moon toggle switch in the top header.
 
 ---
 
-## 🌐 Remote Team (3 WFH Networks) GitHub Database Sync Workflow
+## 🌐 Remote Team (3 WFH Networks) GitHub Database Sync Guide
 
-All 3 team members work on separate home networks. Database schema changes are synchronized seamlessly via **GitHub and EF Core Migrations**:
+Since team members work on separate home networks, database schema updates are synchronized seamlessly via **GitHub and EF Core Migrations**:
 
-### Scenario A: Developer A creates a new Database Model / Field
+### 1. Developer updating the Database Schema:
 ```bash
-# 1. Edit C# Entity class in backend/GrindSet.Api/Models/Entities.cs
-# 2. Add an EF Core Migration C# file:
-cd GrindSet-ERP/backend/GrindSet.Api
-dotnet ef migrations add AddNewFeatureField
+# Edit C# entity models in backend/GrindSet.Api/Models/Entities.cs
+cd backend/GrindSet.Api
+dotnet ef migrations add AddNewSchemaField
 
-# 3. Commit and push the migration code to GitHub:
+# Commit and push migration C# files to GitHub:
 git add .
-git commit -m "Add new feature model migration"
+git commit -m "Add new migration for database schema"
 git push origin main
 ```
 
-### Scenario B: Developers B & C pull the update
+### 2. Other Team Members pulling updates:
 ```bash
-# 1. Pull the latest code from GitHub:
+# Pull the latest changes from GitHub:
 git pull origin main
 
-# 2. Start the backend:
-cd GrindSet-ERP/backend/GrindSet.Api
+# Start the backend API:
+cd backend/GrindSet.Api
 dotnet run
 
-# EF Core automatically runs `context.Database.EnsureCreated()` / `Migrate()` on startup!
-# Your local `grindset.db` updates instantly to match the remote schema.
+# EF Core automatically runs migrations on startup and updates local SQLite database!
 ```
 
 ---
 
-## 📁 Repository Structure Overview
+## 📁 Repository Directory Structure
 
 ```text
 GrindSet-ERP/
 ├── .gitignore                      # Git ignore rules for .NET, Node, and SQLite locks
-├── README.md                       # Developer onboarding & UI design guide
+├── README.md                       # Developer onboarding & execution guide
 ├── backend/
 │   └── GrindSet.Api/
-│       ├── GrindSet.Api.csproj     # .NET 8 Web API project & EF Core packages
-│       ├── Program.cs              # Minimal API, Swagger, CORS, and DbInitializer call
-│       ├── appsettings.json        # SQLite connection string: Data Source=grindset.db
+│       ├── GrindSet.Api.csproj     # ASP.NET Core project & EF Core packages
+│       ├── Program.cs              # Minimal API, Swagger UI, CORS, and DbInitializer
+│       ├── appsettings.json        # SQLite database connection string
 │       ├── Data/
 │       │   ├── GrindSetDbContext.cs # EF Core DbContext mapping all 20 ERD tables
-│       │   └── DbInitializer.cs    # Auto-migration & startup seeder for sample data
+│       │   └── DbInitializer.cs    # Auto-migration & seeder for sample data
 │       ├── Migrations/             # EF Core Migration C# files (Tracked in Git)
 │       └── Models/
-│           └── Entities.cs         # 20 C# entity classes matching the ERD diagram
+│           └── Entities.cs         # 20 C# entity classes matching ERD schema
 └── frontend/
-    ├── package.json                # React 18, Vite, motion.dev, Tailwind CSS, Lucide
-    ├── tailwind.config.js          # Tailwind CSS theme configuration
-    ├── postcss.config.js           # PostCSS configuration with @tailwindcss/postcss
+    ├── package.json                # React 18, Vite, Framer Motion, Tailwind CSS, Lucide
+    ├── postcss.config.js           # PostCSS configuration
     └── src/
-        ├── main.jsx                # React app mounting point
-        ├── App.jsx                 # Jira landing page clone with motion.dev & BKlit visuals
-        ├── index.css               # Jira dark navy theme & gold button styling
+        ├── App.jsx                 # Jira ERP landing page UI with Day theme default
+        ├── index.css               # Atlassian design system tokens
+        ├── main.jsx                # React app entry point
         └── config/
             └── api.js              # REST API endpoint helper for ASP.NET backend
 ```
@@ -176,5 +126,5 @@ GrindSet-ERP/
 
 ## 📜 License & Credits
 
-Developed by the **GrindSet 3-Person Engineering Team**.  
-Powered by .NET 8, ASP.NET Core Minimal APIs, EF Core SQLite, React 18, motion.dev, BKlit.ui, and Kokonut.ui design patterns.
+Developed for **GrindSet - 3 Tier RBC ERP System**.  
+Powered by .NET 8, ASP.NET Core Minimal Web API, Entity Framework Core, SQLite, and React 18.
