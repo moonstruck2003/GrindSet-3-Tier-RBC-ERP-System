@@ -150,8 +150,8 @@ export default function App() {
             <div className={`hidden xl:flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium border ${
               lightMode ? 'bg-[#F4F5F7] border-[#DFE1E6] text-[#42526E]' : 'bg-[#0B1B3D] border-[#1E2D4A] text-[#B3D4FF]'
             }`}>
-              <span className={`w-2 h-2 rounded-full ${apiHealth?.Status === 'Healthy' ? 'bg-[#36B37E]' : 'bg-[#FFAB00]'}`} />
-              <span>{apiHealth?.Status === 'Healthy' ? 'ASP.NET Node Active' : 'API Standby'}</span>
+              <span className={`w-2 h-2 rounded-full ${(apiHealth?.Status === 'Healthy' || apiHealth?.status === 'Healthy') ? 'bg-[#36B37E]' : 'bg-[#FFAB00]'}`} />
+              <span>{(apiHealth?.Status === 'Healthy' || apiHealth?.status === 'Healthy') ? 'ASP.NET Node Active' : 'API Standby'}</span>
             </div>
 
             {/* Theme Toggle Switch */}
