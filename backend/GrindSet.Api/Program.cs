@@ -1,5 +1,6 @@
 using GrindSet.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using GrindSet.Api.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -96,4 +97,184 @@ app.MapGet("/api/erd-summary", async (GrindSetDbContext db) =>
     });
 });
 
+// GET /api/employees - workforce directory
+app.MapGet("/api/employees", async (GrindSetDbContext db) =>
+{
+    var employees = await (from emp in db.Employees
+                           join u in db.Users on emp.EmployeeId equals u.UserId
+                           join dept in db.Departments on emp.DepartmentId equals dept.DepartmentId into deptGroup
+                           from dept in deptGroup.DefaultIfEmpty()
+                           select new
+                           {
+                               emp.EmployeeId,
+                               emp.FullName,
+                               emp.Designation,
+                               emp.HourlyRate,
+                               Email = u.Email,
+                               DepartmentName = dept != null ? dept.DepartmentName : "Engineering & Infrastructure"
+                           }).ToListAsync();
+    return Results.Ok(employees);
+});
+
+// POST /api/employees - onboard new employee
+app.MapPost("/api/employees", async (GrindSetDbContext db, EmployeeDto dto) =>
+{
+    // Create User first
+    var user = new User
+    {
+        Email = dto.Email,
+        PasswordHash = "AQAAAAEAACcQAAAAEHASH_NEW==",
+        Role = "Employee",
+        IsActive = true
+    };
+    db.Users.Add(user);
+    await db.SaveChangesAsync();
+
+    // Get department or create/use first
+    var dept = await db.Departments.FirstOrDefaultAsync();
+    int deptId = dept?.DepartmentId ?? 1;
+
+    // Get company
+    var comp = await db.Companies.FirstOrDefaultAsync();
+    int compId = comp?.CompanyId ?? 1;
+
+    // Create Employee
+    var emp = new Employee
+    {
+        EmployeeId = user.UserId,
+        CompanyId = compId,
+        DepartmentId = deptId,
+        FullName = dto.FullName,
+        Designation = dto.Designation,
+        HourlyRate = dto.HourlyRate
+    };
+    db.Employees.Add(emp);
+
+    // Create Audit Log
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = user.UserId,
+        Action = "ONBOARD_EMPLOYEE",
+        TargetEntity = $"Employee:{dto.FullName}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/employees/{user.UserId}", emp);
+});
+
+// GET /api/transactions - financial transaction ledger
+app.MapGet("/api/transactions", async (GrindSetDbContext db) =>
+{
+    var transactions = await (from tx in db.Transactions
+                              join acc in db.FinancialAccounts on tx.AccountId equals acc.AccountId
+                              join emp in db.Employees on tx.LoggedByEmployeeId equals emp.EmployeeId into empGroup
+                              from emp in empGroup.DefaultIfEmpty()
+                              select new
+                              {
+                                  tx.TransactionId,
+                                  tx.AccountId,
+                                  AccountName = acc.AccountName,
+                                  LoggedBy = emp != null ? emp.FullName : "System",
+                                  tx.Type,
+                                  tx.Amount,
+                                  tx.TransactionDate
+                              }).OrderByDescending(t => t.TransactionDate).ToListAsync();
+    return Results.Ok(transactions);
+});
+
+// POST /api/transactions - log expense
+app.MapPost("/api/transactions", async (GrindSetDbContext db, TransactionDto dto) =>
+{
+    var acc = await db.FinancialAccounts.FindAsync(dto.AccountId);
+    if (acc == null) return Results.NotFound("Financial Account not found");
+
+    var tx = new Transaction
+    {
+        AccountId = dto.AccountId,
+        LoggedByEmployeeId = dto.LoggedByEmployeeId,
+        Type = dto.Type,
+        Amount = dto.Amount,
+        TransactionDate = DateTime.UtcNow
+    };
+    db.Transactions.Add(tx);
+
+    // Update balance
+    acc.CurrentBalance -= dto.Amount;
+
+    // Check budget overrun alert
+    if (acc.CurrentBalance < 0)
+    {
+        db.BudgetAlerts.Add(new BudgetAlert
+        {
+            ProjectId = acc.ProjectId,
+            AccountId = acc.AccountId,
+            AlertType = "Overrun",
+            ActualAmount = acc.AllocatedBudget - acc.CurrentBalance,
+            Status = "Unresolved"
+        });
+    }
+
+    // Create Audit Log
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = dto.LoggedByEmployeeId,
+        Action = "LOG_EXPENSE",
+        TargetEntity = $"Account:{acc.AccountName}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/transactions/{tx.TransactionId}", tx);
+});
+
+// GET /api/accounts - financial accounts
+app.MapGet("/api/accounts", async (GrindSetDbContext db) =>
+{
+    var accounts = await db.FinancialAccounts.ToListAsync();
+    return Results.Ok(accounts);
+});
+
+// GET /api/audit-logs - security audit logs
+app.MapGet("/api/audit-logs", async (GrindSetDbContext db) =>
+{
+    var logs = await (from log in db.SecurityAuditLogs
+                      join u in db.Users on log.UserId equals u.UserId into uGroup
+                      from u in uGroup.DefaultIfEmpty()
+                      select new
+                      {
+                          log.AuditLogId,
+                          Email = u != null ? u.Email : "system@grindset.io",
+                          Role = u != null ? u.Role : "System",
+                          log.Action,
+                          log.TargetEntity,
+                          log.EventTime
+                      }).OrderByDescending(l => l.EventTime).Take(100).ToListAsync();
+    return Results.Ok(logs);
+});
+
+// GET /api/assignments - resource allocation matrix
+app.MapGet("/api/assignments", async (GrindSetDbContext db) =>
+{
+    var assignments = await (from assign in db.ProjectAssignments
+                             join emp in db.Employees on assign.EmployeeId equals emp.EmployeeId
+                             join proj in db.Projects on assign.ProjectId equals proj.ProjectId
+                             select new
+                             {
+                                 assign.AssignmentId,
+                                 assign.ProjectId,
+                                 ProjectName = proj.ProjectName,
+                                 assign.EmployeeId,
+                                 EmployeeName = emp.FullName,
+                                 assign.RoleInProject,
+                                 emp.Designation
+                             }).ToListAsync();
+    return Results.Ok(assignments);
+});
+
 app.Run();
+
+// DTO Records
+public record EmployeeDto(string Email, string FullName, string Designation, decimal HourlyRate);
+public record TransactionDto(int AccountId, int LoggedByEmployeeId, string Type, decimal Amount);
+
