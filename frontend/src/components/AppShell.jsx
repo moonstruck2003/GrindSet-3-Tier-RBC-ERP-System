@@ -230,12 +230,25 @@ export default function AppShell({ children, lightMode, setLightMode }) {
               v1.0.0 · Live
             </div>
 
-            {/* Active User Session Pill */}
+            {/* Active User Session Pill / Demo Mode Indicator */}
             {(() => {
               try {
                 const raw = localStorage.getItem('grindset_user');
                 const u = raw ? JSON.parse(raw) : null;
-                if (!u) return null;
+                if (!u) {
+                  return (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 7,
+                      padding: '6px 14px', borderRadius: 999,
+                      background: 'rgba(255,171,0,0.12)',
+                      border: '1px solid rgba(255,171,0,0.3)',
+                      fontSize: 11, fontWeight: 700, color: '#FFDA75'
+                    }}>
+                      <span className="pulse-dot pulse-gold" />
+                      Demo Mode · Anonymized Sample Data
+                    </div>
+                  );
+                }
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px', borderRadius: 12, background: T.cardBg, border: `1px solid ${T.cardBdr}` }}>
                     <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #0052CC, #6554C0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 12 }}>
