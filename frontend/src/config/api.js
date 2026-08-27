@@ -6,7 +6,17 @@ async function apiFetch(path, opts = {}) {
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...opts.headers },
     ...opts,
   });
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    let msg = `API Error ${res.status}`;
+    try {
+      const errJson = await res.json();
+      if (errJson?.message) msg = errJson.message;
+    } catch {
+      const txt = await res.text();
+      if (txt) msg = txt;
+    }
+    throw new Error(msg);
+  }
   return res.json();
 }
 
@@ -21,6 +31,9 @@ export const api = {
   transactions: () => apiFetch('/api/transactions'),
   auditLogs:    () => apiFetch('/api/audit-logs'),
   assignments:  () => apiFetch('/api/assignments'),
+
+  signup:       (data) => apiFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
+  login:        (data) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
 
   addEmployee: (data) => apiFetch('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
   addTransaction: (data) => apiFetch('/api/transactions', { method: 'POST', body: JSON.stringify(data) }),

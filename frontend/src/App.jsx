@@ -9,6 +9,7 @@ import {
 import { fetchApiHealth, fetchErdSummary, API_BASE_URL } from './config/api';
 import GrindsetLogoNodes from './components/GrindsetLogoNodes';
 import AppShell from './components/AppShell';
+import AuthModal from './components/AuthModal';
 import DashboardPage from './pages/DashboardPage';
 import WorkforcePage from './pages/WorkforcePage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -19,8 +20,8 @@ import AuditPage from './pages/AuditPage';
 function LandingPage({ lightMode, setLightMode }) {
   const [apiHealth, setApiHealth] = useState({ Status: 'Checking...' });
   const [erdSummary, setErdSummary] = useState(null);
-  const [loginOpen, setLoginOpen] = useState(false);
-  const [selectedRole, setSelectedRole] = useState('SuperAdmin');
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('signup');
   const navigate = useNavigate();
 
   const isDark = !lightMode;
@@ -118,9 +119,14 @@ function LandingPage({ lightMode, setLightMode }) {
 
             {/* CTA */}
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-              onClick={() => setLoginOpen(true)}
-              className="btn-primary" style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13 }}>
+              onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }}
+              className="btn-ghost" style={{ padding: '8px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${border}` }}>
               Sign In
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+              onClick={() => { setAuthMode('signup'); setAuthModalOpen(true); }}
+              className="btn-primary" style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13 }}>
+              Sign Up
             </motion.button>
           </div>
         </div>
@@ -149,12 +155,12 @@ function LandingPage({ lightMode, setLightMode }) {
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-              onClick={() => navigate('/dashboard')}
+              onClick={() => { setAuthMode('signup'); setAuthModalOpen(true); }}
               className="btn-gold" style={{ padding: '14px 28px', borderRadius: 12, fontSize: 15, display: 'flex', alignItems: 'center', gap: 8 }}>
-              Open Dashboard <ArrowRight className="w-4 h-4" />
+              Create Account (Sign Up) <ArrowRight className="w-4 h-4" />
             </motion.button>
             <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-              onClick={() => setLoginOpen(true)}
+              onClick={() => { setAuthMode('login'); setAuthModalOpen(true); }}
               className="btn-ghost" style={{ padding: '14px 28px', borderRadius: 12, fontSize: 15 }}>
               Sign In
             </motion.button>
@@ -250,68 +256,14 @@ function LandingPage({ lightMode, setLightMode }) {
         </p>
       </footer>
 
-      {/* ── Login Modal ── */}
-      <AnimatePresence>
-        {loginOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 16, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}>
-            <motion.div
-              initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
-              style={{ width: '100%', maxWidth: 400, borderRadius: 20, overflow: 'hidden',
-                background: isDark ? '#0B1B3D' : 'white', border: `1px solid ${border}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: `1px solid ${border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#0052CC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Shield className="w-4 h-4" style={{ color: 'white' }} />
-                  </div>
-                  <div>
-                    <p style={{ fontWeight: 800, fontSize: 14, color: textPrimary }}>GrindSet ERP Access</p>
-                    <p style={{ fontSize: 11, color: textMuted }}>Select your role profile</p>
-                  </div>
-                </div>
-                <button onClick={() => setLoginOpen(false)} style={{ padding: 6, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: textMuted }}>
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {/* Role tabs */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 4, padding: 4,
-                  borderRadius: 10, background: isDark ? '#172B4D' : '#F0F2F5', border: `1px solid ${border}` }}>
-                  {['SuperAdmin', 'CompanyOwner', 'Employee'].map(r => (
-                    <button key={r} onClick={() => setSelectedRole(r)}
-                      style={{ padding: '7px 4px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
-                        background: selectedRole === r ? '#0052CC' : 'transparent',
-                        color: selectedRole === r ? 'white' : textMuted, transition: 'all .15s' }}>
-                      {r}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Email */}
-                <div>
-                  <label className="gs-label" style={{ color: textMuted }}>Email</label>
-                  <input readOnly className="gs-input"
-                    style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#FAFBFC', color: textPrimary, borderColor: isDark ? 'var(--gs-border)' : '#C1C7D0' }}
-                    value={selectedRole === 'SuperAdmin' ? 'admin@grindset.io' : selectedRole === 'CompanyOwner' ? 'corp@acmeglobal.com' : 'john.dev@grindset.io'} />
-                </div>
-                <div>
-                  <label className="gs-label" style={{ color: textMuted }}>Password</label>
-                  <input readOnly type="password" className="gs-input"
-                    style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#FAFBFC', color: textPrimary, borderColor: isDark ? 'var(--gs-border)' : '#C1C7D0' }}
-                    value="••••••••••••" />
-                </div>
-
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  onClick={() => { setLoginOpen(false); navigate('/dashboard'); }}
-                  className="btn-primary" style={{ padding: '11px', borderRadius: 12, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  Log In as {selectedRole} <ChevronRight className="w-4 h-4" />
-                </motion.button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* ── Auth Modal (Sign Up / Sign In) ── */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode={authMode}
+        isDark={isDark}
+        onAuthSuccess={() => navigate('/dashboard')}
+      />
     </div>
   );
 }
