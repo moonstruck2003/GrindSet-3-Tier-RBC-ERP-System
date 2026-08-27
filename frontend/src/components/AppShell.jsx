@@ -216,7 +216,8 @@ export default function AppShell({ children, lightMode, setLightMode }) {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Live API badge */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '7px 16px', borderRadius: 999,
@@ -228,6 +229,35 @@ export default function AppShell({ children, lightMode, setLightMode }) {
               <Activity style={{ width: 13, height: 13 }} />
               v1.0.0 · Live
             </div>
+
+            {/* Active User Session Pill */}
+            {(() => {
+              try {
+                const raw = localStorage.getItem('grindset_user');
+                const u = raw ? JSON.parse(raw) : null;
+                if (!u) return null;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 12px', borderRadius: 12, background: T.cardBg, border: `1px solid ${T.cardBdr}` }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #0052CC, #6554C0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 12 }}>
+                      {(u.fullName || u.email || 'U')[0].toUpperCase()}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: T.textPri, lineHeight: 1.2 }}>{u.fullName || u.email}</span>
+                      <span style={{ fontSize: 10, color: '#4C9AFF', fontWeight: 700 }}>{u.role}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('grindset_user');
+                        window.location.href = '/';
+                      }}
+                      title="Sign Out"
+                      style={{ padding: 4, borderRadius: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: T.textMut, marginLeft: 4 }}>
+                      <LogOut style={{ width: 14, height: 14 }} />
+                    </button>
+                  </div>
+                );
+              } catch { return null; }
+            })()}
           </div>
         </div>
 
