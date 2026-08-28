@@ -15,6 +15,8 @@ namespace GrindSet.Api.Models
         [Required]
         public string Role { get; set; } = "Employee"; // Admin, Company, Employee
         public bool IsActive { get; set; } = true;
+        public string ApprovalStatus { get; set; } = "Approved"; // Approved, PendingAdmin, PendingCompany, Rejected
+        public string? ReportedNote { get; set; }
     }
 
     public class PasswordReset

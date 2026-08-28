@@ -78,7 +78,7 @@ app.MapGet("/api/projects", async (GrindSetDbContext db) =>
 
 app.MapGet("/api/users", async (GrindSetDbContext db) =>
 {
-    var users = await db.Users.Select(u => new { u.UserId, u.Email, u.Role, u.IsActive }).ToListAsync();
+    var users = await db.Users.Select(u => new { u.UserId, u.Email, u.Role, u.IsActive, u.ApprovalStatus, u.ReportedNote }).ToListAsync();
     return Results.Ok(users);
 });
 
@@ -272,6 +272,41 @@ app.MapGet("/api/assignments", async (GrindSetDbContext db) =>
     return Results.Ok(assignments);
 });
 
+// GET /api/auth/me - Verify active user session
+app.MapGet("/api/auth/me", async (GrindSetDbContext db, int userId) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+    if (user == null) return Results.NotFound(new { message = "User not found." });
+
+    string displayName = user.Email;
+    if (user.Role == "Employee")
+    {
+        var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == user.UserId);
+        if (emp != null) displayName = emp.FullName;
+    }
+    else if (user.Role == "Company")
+    {
+        var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == user.UserId);
+        if (comp != null) displayName = comp.CompanyName;
+    }
+    else if (user.Role == "Admin")
+    {
+        var adm = await db.Admins.FirstOrDefaultAsync(a => a.AdminId == user.UserId);
+        if (adm != null) displayName = adm.FullName;
+    }
+
+    return Results.Ok(new
+    {
+        userId = user.UserId,
+        email = user.Email,
+        role = user.Role,
+        approvalStatus = user.ApprovalStatus,
+        isActive = user.IsActive,
+        reportedNote = user.ReportedNote,
+        fullName = displayName
+    });
+});
+
 // POST /api/auth/signup - Register new user with full role & entity creation
 app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
 {
@@ -299,12 +334,20 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
         _ => "Employee"
     };
 
+    string initialApproval = dbRole switch
+    {
+        "Company" => "PendingAdmin",
+        "Employee" => "PendingCompany",
+        _ => "Approved"
+    };
+
     var user = new User
     {
         Email = cleanEmail,
         PasswordHash = HashPassword(dto.Password),
         Role = dbRole,
-        IsActive = true
+        IsActive = true,
+        ApprovalStatus = initialApproval
     };
 
     db.Users.Add(user);
@@ -320,7 +363,7 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
             CompanyName = string.IsNullOrWhiteSpace(dto.CompanyName) ? $"{displayName}'s Organization" : dto.CompanyName.Trim(),
             RegistrationNo = $"REG-{Random.Shared.Next(100000, 999999)}",
             Industry = string.IsNullOrWhiteSpace(dto.Industry) ? "Technology & Software" : dto.Industry.Trim(),
-            LicenseStatus = "Active"
+            LicenseStatus = "PendingAdminApproval"
         };
         db.Companies.Add(company);
     }
@@ -358,7 +401,7 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
     {
         UserId = user.UserId,
         Action = "USER_SIGNUP",
-        TargetEntity = $"User:{user.Email} ({dbRole})",
+        TargetEntity = $"User:{user.Email} ({dbRole}) Status:{user.ApprovalStatus}",
         EventTime = DateTime.UtcNow
     });
 
@@ -372,6 +415,9 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
             userId = user.UserId,
             email = user.Email,
             role = user.Role,
+            approvalStatus = user.ApprovalStatus,
+            isActive = user.IsActive,
+            reportedNote = user.ReportedNote,
             fullName = displayName,
             token = $"jwt_mock_{user.UserId}_{DateTime.UtcNow.Ticks}"
         }
@@ -395,7 +441,7 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
 
     if (!user.IsActive)
     {
-        return Results.BadRequest(new { message = "Account is inactive. Contact administrator." });
+        return Results.BadRequest(new { message = "Account has been suspended/blocked. Please contact system administrator." });
     }
 
     string displayName = user.Email;
@@ -432,10 +478,202 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
             userId = user.UserId,
             email = user.Email,
             role = user.Role,
+            approvalStatus = user.ApprovalStatus,
+            isActive = user.IsActive,
+            reportedNote = user.ReportedNote,
             fullName = displayName,
             token = $"jwt_mock_{user.UserId}_{DateTime.UtcNow.Ticks}"
         }
     });
+});
+
+// GET /api/admin/pending-companies
+app.MapGet("/api/admin/pending-companies", async (GrindSetDbContext db) =>
+{
+    var pending = await (from c in db.Companies
+                         join u in db.Users on c.CompanyId equals u.UserId
+                         where u.ApprovalStatus == "PendingAdmin"
+                         select new
+                         {
+                             CompanyId = c.CompanyId,
+                             CompanyName = c.CompanyName,
+                             Email = u.Email,
+                             RegistrationNo = c.RegistrationNo,
+                             Industry = c.Industry,
+                             LicenseStatus = c.LicenseStatus,
+                             ApprovalStatus = u.ApprovalStatus
+                         }).ToListAsync();
+    return Results.Ok(pending);
+});
+
+// POST /api/admin/approve-company/{companyId}
+app.MapPost("/api/admin/approve-company/{companyId:int}", async (GrindSetDbContext db, int companyId) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company");
+    if (user == null) return Results.NotFound(new { message = "Company user not found." });
+
+    user.ApprovalStatus = "Approved";
+
+    var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId);
+    if (comp != null) comp.LicenseStatus = "Active";
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = companyId,
+        Action = "ADMIN_APPROVE_COMPANY",
+        TargetEntity = $"Company:{comp?.CompanyName ?? user.Email}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Company approved successfully!", companyId, approvalStatus = "Approved" });
+});
+
+// POST /api/admin/reject-company/{companyId}
+app.MapPost("/api/admin/reject-company/{companyId:int}", async (GrindSetDbContext db, int companyId) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company");
+    if (user == null) return Results.NotFound(new { message = "Company user not found." });
+
+    user.ApprovalStatus = "Rejected";
+
+    var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId);
+    if (comp != null) comp.LicenseStatus = "Rejected";
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = companyId,
+        Action = "ADMIN_REJECT_COMPANY",
+        TargetEntity = $"Company:{comp?.CompanyName ?? user.Email}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Company rejected.", companyId, approvalStatus = "Rejected" });
+});
+
+// POST /api/admin/block-employee/{employeeId}
+app.MapPost("/api/admin/block-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId);
+    if (user == null) return Results.NotFound(new { message = "User not found." });
+
+    user.IsActive = !user.IsActive;
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = employeeId,
+        Action = user.IsActive ? "ADMIN_UNBLOCK_EMPLOYEE" : "ADMIN_BLOCK_EMPLOYEE",
+        TargetEntity = $"User:{user.Email}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = user.IsActive ? "Employee account unblocked." : "Employee account blocked.", employeeId, isActive = user.IsActive });
+});
+
+// POST /api/admin/report-employee/{employeeId}
+app.MapPost("/api/admin/report-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId, ReportDto dto) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId);
+    if (user == null) return Results.NotFound(new { message = "User not found." });
+
+    user.ReportedNote = string.IsNullOrWhiteSpace(dto.Note) ? "Reported by System Admin for compliance review." : dto.Note.Trim();
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = employeeId,
+        Action = "ADMIN_REPORT_EMPLOYEE_TO_COMPANY",
+        TargetEntity = $"User:{user.Email} | Note: {user.ReportedNote}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Employee reported to Company.", employeeId, reportedNote = user.ReportedNote });
+});
+
+// GET /api/company/pending-employees/{companyId}
+app.MapGet("/api/company/pending-employees/{companyId:int}", async (GrindSetDbContext db, int companyId) =>
+{
+    var pending = await (from emp in db.Employees
+                         join u in db.Users on emp.EmployeeId equals u.UserId
+                         join dept in db.Departments on emp.DepartmentId equals dept.DepartmentId into deptGroup
+                         from dept in deptGroup.DefaultIfEmpty()
+                         where emp.CompanyId == companyId && u.ApprovalStatus == "PendingCompany"
+                         select new
+                         {
+                             EmployeeId = emp.EmployeeId,
+                             FullName = emp.FullName,
+                             Email = u.Email,
+                             Designation = emp.Designation,
+                             HourlyRate = emp.HourlyRate,
+                             DepartmentName = dept != null ? dept.DepartmentName : "Engineering",
+                             ApprovalStatus = u.ApprovalStatus,
+                             IsActive = u.IsActive,
+                             ReportedNote = u.ReportedNote
+                         }).ToListAsync();
+    return Results.Ok(pending);
+});
+
+// POST /api/company/approve-employee/{employeeId}
+app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId && u.Role == "Employee");
+    if (user == null) return Results.NotFound(new { message = "Employee user not found." });
+
+    user.ApprovalStatus = "Approved";
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = employeeId,
+        Action = "COMPANY_APPROVE_EMPLOYEE",
+        TargetEntity = $"Employee:{user.Email}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Employee approved successfully!", employeeId, approvalStatus = "Approved" });
+});
+
+// POST /api/company/reject-employee/{employeeId}
+app.MapPost("/api/company/reject-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId) =>
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId && u.Role == "Employee");
+    if (user == null) return Results.NotFound(new { message = "Employee user not found." });
+
+    user.ApprovalStatus = "Rejected";
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = employeeId,
+        Action = "COMPANY_REJECT_EMPLOYEE",
+        TargetEntity = $"Employee:{user.Email}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Employee request rejected.", employeeId, approvalStatus = "Rejected" });
+});
+
+// GET /api/companies - All companies overview
+app.MapGet("/api/companies", async (GrindSetDbContext db) =>
+{
+    var companies = await (from c in db.Companies
+                           join u in db.Users on c.CompanyId equals u.UserId
+                           select new
+                           {
+                               c.CompanyId,
+                               c.CompanyName,
+                               c.RegistrationNo,
+                               c.Industry,
+                               c.LicenseStatus,
+                               Email = u.Email,
+                               ApprovalStatus = u.ApprovalStatus,
+                               IsActive = u.IsActive,
+                               EmployeeCount = db.Employees.Count(e => e.CompanyId == c.CompanyId),
+                               ProjectCount = db.Projects.Count(p => p.CompanyId == c.CompanyId)
+                           }).ToListAsync();
+    return Results.Ok(companies);
 });
 
 app.Run();
@@ -460,5 +698,6 @@ public record EmployeeDto(string Email, string FullName, string Designation, dec
 public record TransactionDto(int AccountId, int LoggedByEmployeeId, string Type, decimal Amount);
 public record SignUpDto(string Email, string Password, string FullName, string Role, string? Designation, decimal HourlyRate, string? CompanyName, string? Industry);
 public record LoginDto(string Email, string Password);
+public record ReportDto(string Note);
 
 

@@ -14,10 +14,10 @@ namespace GrindSet.Api.Data
             // Seed Users if not existing
             if (!context.Users.Any())
             {
-                var adminUser = new User { Email = "admin@grindset.io", PasswordHash = "AQAAAAEAACcQAAAAEHASH123==", Role = "Admin", IsActive = true };
-                var companyUser = new User { Email = "corp@acmeglobal.com", PasswordHash = "AQAAAAEAACcQAAAAEHASH456==", Role = "Company", IsActive = true };
-                var empUser1 = new User { Email = "john.dev@grindset.io", PasswordHash = "AQAAAAEAACcQAAAAEHASH789==", Role = "Employee", IsActive = true };
-                var empUser2 = new User { Email = "sarah.pm@grindset.io", PasswordHash = "AQAAAAEAACcQAAAAEHASH999==", Role = "Employee", IsActive = true };
+                var adminUser = new User { Email = "admin@grindset.io", PasswordHash = "AQAAAAEAACcQAAAAEHASH123==", Role = "Admin", IsActive = true, ApprovalStatus = "Approved" };
+                var companyUser = new User { Email = "corp@acmeglobal.com", PasswordHash = "AQAAAAEAACcQAAAAEHASH456==", Role = "Company", IsActive = true, ApprovalStatus = "Approved" };
+                var empUser1 = new User { Email = "john.dev@grindset.io", PasswordHash = "AQAAAAEAACcQAAAAEHASH789==", Role = "Employee", IsActive = true, ApprovalStatus = "Approved" };
+                var empUser2 = new User { Email = "sarah.pm@grindset.io", PasswordHash = "AQAAAAEAACcQAAAAEHASH999==", Role = "Employee", IsActive = true, ApprovalStatus = "Approved" };
 
                 context.Users.AddRange(adminUser, companyUser, empUser1, empUser2);
                 context.SaveChanges();

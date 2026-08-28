@@ -34,6 +34,18 @@ export const api = {
 
   signup:       (data) => apiFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
   login:        (data) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+  me:           (userId) => apiFetch(`/api/auth/me?userId=${userId}`),
+
+  companies:        () => apiFetch('/api/companies'),
+  pendingCompanies: () => apiFetch('/api/admin/pending-companies'),
+  approveCompany:   (companyId) => apiFetch(`/api/admin/approve-company/${companyId}`, { method: 'POST' }),
+  rejectCompany:    (companyId) => apiFetch(`/api/admin/reject-company/${companyId}`, { method: 'POST' }),
+  blockEmployee:    (employeeId) => apiFetch(`/api/admin/block-employee/${employeeId}`, { method: 'POST' }),
+  reportEmployee:   (employeeId, note) => apiFetch(`/api/admin/report-employee/${employeeId}`, { method: 'POST', body: JSON.stringify({ note }) }),
+
+  pendingEmployees: (companyId) => apiFetch(`/api/company/pending-employees/${companyId}`),
+  approveEmployee:  (employeeId) => apiFetch(`/api/company/approve-employee/${employeeId}`, { method: 'POST' }),
+  rejectEmployee:   (employeeId) => apiFetch(`/api/company/reject-employee/${employeeId}`, { method: 'POST' }),
 
   addEmployee: (data) => apiFetch('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
   addTransaction: (data) => apiFetch('/api/transactions', { method: 'POST', body: JSON.stringify(data) }),

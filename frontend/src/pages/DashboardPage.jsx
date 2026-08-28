@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   Users, FolderKanban, Coins, ShieldAlert, TrendingUp,
-  ChevronRight, DollarSign, AlertTriangle, Database, Zap, Activity
+  ChevronRight, AlertTriangle, Database, Zap, CheckCircle2, XCircle, Building2, UserPlus
 } from 'lucide-react';
 import { api } from '../config/api';
 import { useTheme } from '../config/theme';
@@ -54,43 +54,68 @@ function StatCard({ label, value, icon: Icon, color, sub, delay, T }) {
   );
 }
 
-function ChartCard({ title, value, pill, pillColor, data, lineColor, labels, delay, T }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }}
-      style={{ background: T.cardBg, border: `1px solid ${T.cardBdr}`, borderRadius: 16, padding: '20px 22px', backdropFilter: 'blur(12px)' }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <div>
-          <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.09em', textTransform: 'uppercase', color: T.textMut, marginBottom: 5 }}>{title}</p>
-          <p style={{ fontSize: 26, fontWeight: 900, color: lineColor, margin: 0 }}>{value}</p>
-        </div>
-        <div style={{ padding: '4px 10px', borderRadius: 999, background: `${lineColor}18`, border: `1px solid ${lineColor}30`, display: 'flex', alignItems: 'center', gap: 5 }}>
-          <TrendingUp style={{ width: 12, height: 12, color: lineColor }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: lineColor }}>{pill}</span>
-        </div>
-      </div>
-      <SparkLine data={data} color={lineColor} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-        {labels.map(l => <span key={l} style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: T.textMut }}>{l}</span>)}
-      </div>
-    </motion.div>
-  );
-}
-
 export default function DashboardPage({ lightMode }) {
   const T = useTheme(lightMode);
+  const [currentUser, setCurrentUser] = useState(null);
   const [summary, setSummary] = useState(null);
   const [projects, setProjects] = useState([]);
   const [txns, setTxns] = useState([]);
+  const [pendingEmployees, setPendingEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionMsg, setActionMsg] = useState('');
 
   useEffect(() => {
-    Promise.all([api.erdSummary(), api.projects(), api.transactions()])
-      .then(([s, p, t]) => { setSummary(s); setProjects(p); setTxns(t.slice(0, 6)); })
+    let u = null;
+    try {
+      const raw = localStorage.getItem('grindset_user');
+      if (raw) u = JSON.parse(raw);
+    } catch {}
+    setCurrentUser(u);
+
+    const companyId = u?.userId || 1;
+
+    Promise.all([
+      api.erdSummary().catch(() => null),
+      api.projects().catch(() => []),
+      api.transactions().catch(() => []),
+      api.pendingEmployees(companyId).catch(() => []),
+    ])
+      .then(([s, p, t, pe]) => {
+        setSummary(s);
+        setProjects(p);
+        setTxns(t.slice(0, 6));
+        setPendingEmployees(pe);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const handleApproveEmployee = async (empId) => {
+    try {
+      await api.approveEmployee(empId);
+      setActionMsg(`Employee #${empId} approved successfully!`);
+      setTimeout(() => setActionMsg(''), 4000);
+      const companyId = currentUser?.userId || 1;
+      const pe = await api.pendingEmployees(companyId).catch(() => []);
+      setPendingEmployees(pe);
+    } catch (err) {
+      alert(err.message || 'Approval failed');
+    }
+  };
+
+  const handleRejectEmployee = async (empId) => {
+    if (!window.confirm('Are you sure you want to reject this employee application?')) return;
+    try {
+      await api.rejectEmployee(empId);
+      setActionMsg(`Employee #${empId} request rejected.`);
+      setTimeout(() => setActionMsg(''), 4000);
+      const companyId = currentUser?.userId || 1;
+      const pe = await api.pendingEmployees(companyId).catch(() => []);
+      setPendingEmployees(pe);
+    } catch (err) {
+      alert(err.message || 'Rejection failed');
+    }
+  };
 
   const WEEKS = ['W1','W2','W3','W4','W5','W6','W7','W8'];
 
@@ -101,30 +126,91 @@ export default function DashboardPage({ lightMode }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 900, color: T.textPri, margin: 0 }}>
-            Welcome back, <span style={{ background: 'linear-gradient(135deg,#4C9AFF,#0052CC)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>SuperAdmin</span> 👋
+            Welcome back, <span style={{ background: 'linear-gradient(135deg,#4C9AFF,#0052CC)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{currentUser?.fullName || 'Company Owner'}</span> 👋
           </h2>
-          <p style={{ fontSize: 13, color: T.textMut, marginTop: 4 }}>Here's your enterprise overview for today.</p>
+          <p style={{ fontSize: 13, color: T.textMut, marginTop: 4 }}>Enterprise Organization Overview & Workforce Management Portal</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 14px', borderRadius: 20,
           background: 'rgba(0,82,204,0.12)', border: '1px solid rgba(0,82,204,0.25)',
           fontSize: 11, fontWeight: 700, color: '#4C9AFF', fontFamily: 'JetBrains Mono, monospace' }}>
-          <Zap style={{ width: 13, height: 13 }} />
-          Live · ASP.NET Core
+          <Building2 style={{ width: 13, height: 13 }} />
+          Company Tenant Tier
         </div>
       </div>
 
+      {actionMsg && (
+        <div style={{ padding: '12px 18px', borderRadius: 12, background: 'rgba(54,179,126,0.15)', border: '1px solid rgba(54,179,126,0.3)', color: '#57D9A3', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CheckCircle2 style={{ width: 16, height: 16 }} />
+          {actionMsg}
+        </div>
+      )}
+
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-        <StatCard label="Total Employees" value={loading ? '…' : summary?.totalEmployees} icon={Users}      color="#4C9AFF" sub="Across all departments"   delay={0}    T={T} />
-        <StatCard label="Active Projects" value={loading ? '…' : summary?.totalProjects}  icon={FolderKanban} color="#FFDA75" sub="In progress"             delay={0.05} T={T} />
-        <StatCard label="Transactions"    value={loading ? '…' : summary?.totalTransactions} icon={Coins}  color="#BF9AFF" sub="All-time logged expenses" delay={0.1}  T={T} />
-        <StatCard label="Audit Events"    value={loading ? '…' : summary?.totalAuditLogs} icon={ShieldAlert} color="#FF8F73" sub="Security log entries"    delay={0.15} T={T} />
+        <StatCard label="Total Workforce" value={loading ? '…' : summary?.totalEmployees} icon={Users} color="#4C9AFF" sub="Company staff count" delay={0} T={T} />
+        <StatCard label="Pending Applications" value={pendingEmployees.length} icon={UserPlus} color="#FFAB00" sub="Employee signups awaiting review" delay={0.05} T={T} />
+        <StatCard label="Active Projects" value={loading ? '…' : summary?.totalProjects} icon={FolderKanban} color="#FFDA75" sub="In progress projects" delay={0.1} T={T} />
+        <StatCard label="Transactions" value={loading ? '…' : summary?.totalTransactions} icon={Coins} color="#BF9AFF" sub="Company expenses" delay={0.15} T={T} />
       </div>
 
-      {/* Chart row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
-        <ChartCard title="Sprint Velocity" value="90%" pill="+18% this week" lineColor="#36B37E" data={SPRINT} labels={WEEKS} delay={0.2} T={T} />
-        <ChartCard title="Budget Utilization" value="$112,500" pill="75% used" lineColor="#6554C0" data={BUDGET} labels={WEEKS} delay={0.25} T={T} />
+      {/* ── Employee Signup Approval Queue (Company Owner Authority) ── */}
+      <div className="glass" style={{ padding: 24, borderRadius: 16, background: T.cardBg, border: `1px solid ${T.cardBdr}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <UserPlus style={{ width: 20, height: 20, color: '#FFAB00' }} />
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: T.textPri, margin: 0 }}>Employee Signup Approval Queue</h3>
+            <span className="pill pill-gold">{pendingEmployees.length} Pending</span>
+          </div>
+        </div>
+
+        {pendingEmployees.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center', color: T.textMut, fontSize: 13, background: 'rgba(255,255,255,0.02)', borderRadius: 12 }}>
+            <CheckCircle2 style={{ width: 24, height: 24, color: '#57D9A3', margin: '0 auto 6px' }} />
+            No pending employee signup requests for your company.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="gs-table">
+              <thead>
+                <tr>
+                  <th>Employee Name</th>
+                  <th>Email</th>
+                  <th>Designation</th>
+                  <th>Rate ($/hr)</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Company Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingEmployees.map(emp => (
+                  <tr key={emp.EmployeeId}>
+                    <td style={{ fontWeight: 700, color: T.textPri }}>{emp.FullName}</td>
+                    <td style={{ fontSize: 12 }}>{emp.Email}</td>
+                    <td>{emp.Designation}</td>
+                    <td style={{ fontWeight: 700, color: '#4C9AFF' }}>${emp.HourlyRate}/hr</td>
+                    <td><span className="pill pill-gold">Pending Company Approval</span></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                        <button
+                          onClick={() => handleApproveEmployee(emp.EmployeeId)}
+                          style={{ padding: '6px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #36B37E, #00875A)', color: 'white', fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <CheckCircle2 style={{ width: 14, height: 14 }} /> Approve Access
+                        </button>
+                        <button
+                          onClick={() => handleRejectEmployee(emp.EmployeeId)}
+                          style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(255,86,48,0.15)', color: '#FF5630', fontWeight: 700, fontSize: 12, border: '1px solid rgba(255,86,48,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <XCircle style={{ width: 14, height: 14 }} /> Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Projects + Transactions */}
@@ -136,7 +222,7 @@ export default function DashboardPage({ lightMode }) {
           style={{ background: T.cardBg, border: `1px solid ${T.cardBdr}`, borderRadius: 16, overflow: 'hidden', backdropFilter: 'blur(12px)' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${T.divider}` }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: T.textPri, margin: 0 }}>Active Projects</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.textPri, margin: 0 }}>Company Projects</p>
             <Link to="/projects" style={{ fontSize: 12, fontWeight: 700, color: '#4C9AFF', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none' }}>
               View all <ChevronRight style={{ width: 13, height: 13 }} />
             </Link>
@@ -175,7 +261,7 @@ export default function DashboardPage({ lightMode }) {
           style={{ background: T.cardBg, border: `1px solid ${T.cardBdr}`, borderRadius: 16, overflow: 'hidden', backdropFilter: 'blur(12px)' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${T.divider}` }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: T.textPri, margin: 0 }}>Recent Expenses</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: T.textPri, margin: 0 }}>Recent Financial Expenses</p>
             <Link to="/finance" style={{ fontSize: 12, fontWeight: 700, color: '#4C9AFF', display: 'flex', alignItems: 'center', gap: 3, textDecoration: 'none' }}>
               View <ChevronRight style={{ width: 13, height: 13 }} />
             </Link>
@@ -204,17 +290,6 @@ export default function DashboardPage({ lightMode }) {
         </motion.div>
       </div>
 
-      {/* ERD badge */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderRadius: 14,
-          background: 'rgba(0,82,204,0.08)', border: '1px solid rgba(0,82,204,0.18)' }}>
-        <Database style={{ width: 14, height: 14, color: '#4C9AFF', flexShrink: 0 }} />
-        <p style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#4C9AFF', margin: 0 }}>
-          {summary
-            ? `SQLite ERD · ${summary.erdTablesCount ?? 20} tables · ${summary.erdSchemaStatus ?? 'Verified & Auto-Seeded'} · ${summary.totalUsers ?? '—'} registered users`
-            : 'Loading ERD summary…'}
-        </p>
-      </motion.div>
     </div>
   );
 }
