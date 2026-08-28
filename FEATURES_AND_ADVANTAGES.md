@@ -166,6 +166,29 @@ Provides full-featured enterprise financial management with **Multi-Project Scop
 
 ---
 
+## 12. End-to-End Role-Aware Event Notification Subsystem (`NotificationsDrawer`)
+
+### What It Does
+Provides an omnipresent, role-specific notification drawer and top navigation unread bell counter (`🔔 Badge`) with real-time event aggregation:
+- **Employee Perspective**:
+  - **Task Assignments**: Real-time notifications when assigned to project tasks (*Title*, *Project*, *Priority*, *Story Points*).
+  - **Reimbursement Status Updates**: Immediate notifications when an expense claim is *APPROVED*, *DECLINED*, or *PENDING* by CFO.
+  - **Identity Verification**: Active confirmation of employee workspace clearance.
+- **Company Owner Perspective**:
+  - **Pending Employee Access Applications**: Actionable notifications when a new employee signs up, complete with 1-click **Approve Access** button.
+  - **CFO Expense Claim Queue**: Notifications for employee reimbursement claims awaiting CFO approval with 1-click **Approve Now** button.
+  - **Low Liquidity Alerts**: Red alert notifications when operating account balances drop below 20% of allocated budget.
+- **System Admin Perspective**:
+  - **Pending Tenant Registrations**: Actionable notifications for pending company signups with 1-click **Approve License** button.
+  - **System Overrun Alerts**: Real-time flags for accounts with negative balances.
+
+### Enterprise Advantage
+- **Role-Tailored Context**: Employees only see their own tasks and claims, while CFOs get financial approval queues and low liquidity warnings.
+- **1-Click In-Drawer Actions**: Managers can approve employee access or expense claims directly inside the drawer without leaving their active page.
+- **Zero Polling Lag**: Unread badge count automatically recalculates based on active workspace state.
+
+---
+
 ## 🛠️ Summary Architecture Matrix
 
 | Component / Module | Inspired By | Core Purpose | Enterprise Advantage |
@@ -181,3 +204,4 @@ Provides full-featured enterprise financial management with **Multi-Project Scop
 | **RBAC Route Protection** | Workday / SAP | Client-side route access guards | Defense-in-depth UI protection |
 | **End-to-End ERP Finance** | SAP / QuickBooks | CFO liquidity & Employee reimbursement claims | Real-time liquidity & CSV audit exports |
 | **Top Bar Theme Toggle** | Modern Web | Day Mode default + Dark Mode switch | Visual accessibility & comfort |
+| **Role-Aware Notifications** | Atlassian / GitHub | Real-time event notifications & 1-click actions | 100% notification coverage across all roles |

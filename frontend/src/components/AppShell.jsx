@@ -53,11 +53,49 @@ export default function AppShell({ children, lightMode, setLightMode }) {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createTab, setCreateTab] = useState('task');
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifCount, setNotifCount] = useState(2);
+  const [notifCount, setNotifCount] = useState(0);
 
   const location = useLocation();
   const isLanding = location.pathname === '/';
   const T = theme(lightMode);
+
+  const refreshNotificationBadge = async (u) => {
+    if (!u) return;
+    try {
+      const uRole = u.role || 'Company';
+      const uId = Number(u.userId || 0);
+
+      const [tasksRes, txRes, accRes, peRes, pcRes] = await Promise.all([
+        api.tasks().catch(() => []),
+        api.transactions().catch(() => []),
+        api.accounts().catch(() => []),
+        uRole === 'Company' ? api.pendingEmployees(uId).catch(() => []) : Promise.resolve([]),
+        uRole === 'Admin' ? api.pendingCompanies().catch(() => []) : Promise.resolve([]),
+      ]);
+
+      let count = 0;
+      if (uRole === 'Employee') {
+        const myTasks = tasksRes.filter(t => Number(t.AssigneeId || t.assigneeId) === uId);
+        const myClaims = txRes.filter(tx => Number(tx.LoggedByEmployeeId || tx.loggedByEmployeeId) === uId || tx.LoggedBy === u.fullName);
+        count = myTasks.length + myClaims.length + 1;
+      } else if (uRole === 'Company') {
+        const pendingClaimsList = txRes.filter(tx => (tx.Status || tx.status) === 'PendingApproval');
+        const lowLiquidity = accRes.filter(a => {
+          const bal = Number(a.CurrentBalance || a.currentBalance || 0);
+          const alloc = Number(a.AllocatedBudget || a.allocatedBudget || 1);
+          return (bal / alloc) < 0.2;
+        });
+        count = peRes.length + pendingClaimsList.length + lowLiquidity.length;
+      } else if (uRole === 'Admin') {
+        const overruns = accRes.filter(a => Number(a.CurrentBalance || a.currentBalance) < 0);
+        count = pcRes.length + overruns.length;
+      }
+
+      setNotifCount(count);
+    } catch (e) {
+      console.error('Failed to calculate notification count:', e);
+    }
+  };
 
   const syncUserSession = async () => {
     try {
@@ -65,7 +103,7 @@ export default function AppShell({ children, lightMode, setLightMode }) {
       if (raw) {
         const u = JSON.parse(raw);
         setCurrentUser(u);
-        // Refresh session from API to get fresh approval status
+        refreshNotificationBadge(u);
         if (u?.userId) {
           const fresh = await api.me(u.userId).catch(() => null);
           if (fresh) {
@@ -425,6 +463,7 @@ export default function AppShell({ children, lightMode, setLightMode }) {
         isOpen={notifOpen}
         onClose={() => setNotifOpen(false)}
         user={currentUser}
+        onNotificationCountChange={setNotifCount}
         lightMode={lightMode}
       />
     </div>
