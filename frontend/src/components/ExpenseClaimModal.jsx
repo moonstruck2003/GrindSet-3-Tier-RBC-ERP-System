@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Coins, X, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api } from '../config/api';
 
-export default function ExpenseClaimModal({ isOpen, onClose, accounts = [], user, onClaimSubmitted, lightMode }) {
+export default function ExpenseClaimModal({ isOpen, onClose, accounts = [], projects = [], user, onClaimSubmitted, lightMode }) {
   const [accountId, setAccountId] = useState('');
   const [expenseType, setExpenseType] = useState('Dev Hardware Equipment');
   const [amount, setAmount] = useState('350');
@@ -111,9 +111,10 @@ export default function ExpenseClaimModal({ isOpen, onClose, accounts = [], user
               {accounts.map(a => {
                 const id = a.AccountId ?? a.accountId;
                 const name = a.AccountName ?? a.accountName ?? `Account #${id}`;
+                const projName = a.ProjectName ?? a.projectName ?? `Proj #${a.ProjectId ?? a.projectId}`;
                 return (
                   <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
-                    {name}
+                    {name} [{projName}]
                   </option>
                 );
               })}

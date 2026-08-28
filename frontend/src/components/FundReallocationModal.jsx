@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { RefreshCw, X, ArrowRight, DollarSign, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api } from '../config/api';
 
-export default function FundReallocationModal({ isOpen, onClose, accounts = [], onReallocated, lightMode }) {
+export default function FundReallocationModal({ isOpen, onClose, accounts = [], projects = [], onReallocated, lightMode }) {
   const [sourceAccountId, setSourceAccountId] = useState('');
   const [targetAccountId, setTargetAccountId] = useState('');
   const [amount, setAmount] = useState('5000');
@@ -45,10 +45,13 @@ export default function FundReallocationModal({ isOpen, onClose, accounts = [], 
       return;
     }
 
+    const srcAcc = accounts.find(a => String(a.AccountId ?? a.accountId) === String(sourceAccountId));
+    const projId = srcAcc?.ProjectId ?? srcAcc?.projectId ?? 1;
+
     setLoading(true);
     try {
       const payload = {
-        projectId: 1,
+        projectId: parseInt(projId),
         sourceAccountId: parseInt(sourceAccountId),
         targetAccountId: parseInt(targetAccountId),
         amount: parseFloat(amount),
@@ -122,10 +125,11 @@ export default function FundReallocationModal({ isOpen, onClose, accounts = [], 
               {accounts.map(a => {
                 const id = a.AccountId ?? a.accountId;
                 const name = a.AccountName ?? a.accountName ?? `Account #${id}`;
+                const projName = a.ProjectName ?? a.projectName ?? `Proj #${a.ProjectId ?? a.projectId}`;
                 const bal = a.CurrentBalance ?? a.currentBalance ?? 0;
                 return (
                   <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
-                    {name} (Available: ${Number(bal).toLocaleString()})
+                    {name} [{projName}] (Available: ${Number(bal).toLocaleString()})
                   </option>
                 );
               })}
@@ -143,10 +147,11 @@ export default function FundReallocationModal({ isOpen, onClose, accounts = [], 
               {accounts.map(a => {
                 const id = a.AccountId ?? a.accountId;
                 const name = a.AccountName ?? a.accountName ?? `Account #${id}`;
+                const projName = a.ProjectName ?? a.projectName ?? `Proj #${a.ProjectId ?? a.projectId}`;
                 const bal = a.CurrentBalance ?? a.currentBalance ?? 0;
                 return (
                   <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
-                    {name} (Current: ${Number(bal).toLocaleString()})
+                    {name} [{projName}] (Current: ${Number(bal).toLocaleString()})
                   </option>
                 );
               })}

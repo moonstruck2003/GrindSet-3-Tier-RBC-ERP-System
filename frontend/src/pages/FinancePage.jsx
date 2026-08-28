@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
   ShieldCheck, RefreshCw, Download, FileSpreadsheet, Plus, CheckCircle2,
-  XCircle, Clock, AlertTriangle, UserCheck, Layers, Coins, Calculator
+  XCircle, Clock, AlertTriangle, UserCheck, Layers, Coins, Calculator, FolderKanban, Filter
 } from 'lucide-react';
 import { api } from '../config/api';
 import FundReallocationModal from '../components/FundReallocationModal';
@@ -11,9 +11,13 @@ import ExpenseClaimModal from '../components/ExpenseClaimModal';
 
 export default function FinancePage({ lightMode }) {
   const [user, setUser] = useState(null);
+  const [projects, setProjects] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Selected Project Filter ('all' or numeric string)
+  const [selectedProjectId, setSelectedProjectId] = useState('all');
 
   // Modals state
   const [reallocModalOpen, setReallocModalOpen] = useState(false);
@@ -26,10 +30,12 @@ export default function FinancePage({ lightMode }) {
   const loadFinanceData = async () => {
     setLoading(true);
     try {
-      const [accRes, txRes] = await Promise.all([
+      const [projRes, accRes, txRes] = await Promise.all([
+        api.projects().catch(() => []),
         api.accounts().catch(() => []),
         api.transactions().catch(() => []),
       ]);
+      setProjects(projRes);
       setAccounts(accRes);
       setTransactions(txRes);
     } catch (err) {
@@ -70,11 +76,20 @@ export default function FinancePage({ lightMode }) {
     }
   };
 
-  // Calculations
-  const totalAllocated = accounts.reduce((s, a) => s + Number(a.AllocatedBudget || a.allocatedBudget || 0), 0);
-  const totalBalance = accounts.reduce((s, a) => s + Number(a.CurrentBalance || a.currentBalance || 0), 0);
-  const approvedExpenses = transactions.filter(t => (t.Status || t.status) === 'Approved').reduce((s, t) => s + Number(t.Amount || t.amount || 0), 0);
-  const pendingClaims = transactions.filter(t => (t.Status || t.status) === 'PendingApproval');
+  // Filter Accounts & Transactions by Selected Project
+  const filteredAccounts = selectedProjectId === 'all'
+    ? accounts
+    : accounts.filter(a => Number(a.ProjectId || a.projectId) === Number(selectedProjectId));
+
+  const filteredTransactions = selectedProjectId === 'all'
+    ? transactions
+    : transactions.filter(t => Number(t.ProjectId || t.projectId) === Number(selectedProjectId));
+
+  // Calculations based on filtered view
+  const totalAllocated = filteredAccounts.reduce((s, a) => s + Number(a.AllocatedBudget || a.allocatedBudget || 0), 0);
+  const totalBalance = filteredAccounts.reduce((s, a) => s + Number(a.CurrentBalance || a.currentBalance || 0), 0);
+  const approvedExpenses = filteredTransactions.filter(t => (t.Status || t.status) === 'Approved').reduce((s, t) => s + Number(t.Amount || t.amount || 0), 0);
+  const pendingClaims = filteredTransactions.filter(t => (t.Status || t.status) === 'PendingApproval');
 
   // Employee calculated earnings
   const monthlyEarnings = weeklyHours * hourlyRate * 4.33;
@@ -85,6 +100,7 @@ export default function FinancePage({ lightMode }) {
   const cardBg = lightMode ? 'rgba(255,255,255,0.92)' : 'rgba(11,27,61,0.65)';
   const border = lightMode ? '#DFE1E6' : 'rgba(255,255,255,0.08)';
   const sectionBg = lightMode ? '#F4F5F7' : 'rgba(255,255,255,0.03)';
+  const inputBg = lightMode ? '#FFFFFF' : 'rgba(255,255,255,0.05)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
@@ -99,14 +115,14 @@ export default function FinancePage({ lightMode }) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <h1 style={{ fontSize: 22, fontWeight: 800, color: textPri, margin: 0 }}>
-                  General Ledger & Finance Hub
+                  Multi-Project General Ledger & Finance Hub
                 </h1>
                 <span className={`pill ${isCfoScope ? 'pill-blue' : 'pill-green'}`}>
                   {isCfoScope ? 'CFO Controller Scope' : 'Employee Timesheet & Claims'}
                 </span>
               </div>
               <p style={{ fontSize: 13, color: textMut, margin: 0, marginTop: 4 }}>
-                Enterprise Financial Subsystem &nbsp;·&nbsp; GAAP Accounting Ledger &nbsp;·&nbsp; Expense Management
+                Multi-Tenant Financial Subsystem &nbsp;·&nbsp; Enterprise Ledger &nbsp;·&nbsp; Project Expense Isolation
               </p>
             </div>
           </div>
@@ -114,7 +130,7 @@ export default function FinancePage({ lightMode }) {
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <a
-              href={api.exportCsvUrl()}
+              href={`${api.exportCsvUrl()}${selectedProjectId !== 'all' ? `?projectId=${selectedProjectId}` : ''}`}
               target="_blank"
               rel="noreferrer"
               style={{ textDecoration: 'none' }}
@@ -145,24 +161,62 @@ export default function FinancePage({ lightMode }) {
         </div>
       </div>
 
+      {/* ── MULTI-PROJECT SCOPE SELECTOR BAR ── */}
+      <div className="glass" style={{ padding: '16px 24px', borderRadius: 16, background: cardBg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Filter style={{ width: 18, height: 18, color: '#4C9AFF' }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: textPri }}>Filter Ledger by Project Scope:</span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setSelectedProjectId('all')}
+            className={`pill ${selectedProjectId === 'all' ? 'pill-blue' : 'btn-ghost'}`}
+            style={{ padding: '6px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: selectedProjectId === 'all' ? 'none' : `1px solid ${border}` }}
+          >
+            🌐 All Projects ({projects.length})
+          </button>
+
+          {projects.map(p => {
+            const pId = p.projectId || p.ProjectId;
+            const isSel = String(selectedProjectId) === String(pId);
+            return (
+              <button
+                key={pId}
+                onClick={() => setSelectedProjectId(String(pId))}
+                style={{
+                  padding: '6px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  background: isSel ? '#0052CC' : inputBg,
+                  color: isSel ? 'white' : textPri,
+                  border: `1px solid ${isSel ? '#0052CC' : border}`,
+                  transition: 'all .15s'
+                }}
+              >
+                📁 {p.projectName || p.ProjectName}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* KPI Financial Overview Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
           <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#57D9A3', letterSpacing: '0.06em' }}>Total Allocated Budget</div>
           <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>${totalAllocated.toLocaleString()}</div>
-          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Across {accounts.length} Operating Accounts</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Across {filteredAccounts.length} Active Accounts</div>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
           <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#4C9AFF', letterSpacing: '0.06em' }}>Current Liquidity Balance</div>
           <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>${totalBalance.toLocaleString()}</div>
-          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Available Liquid Funds</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Available Liquid Capital</div>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
           <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#BF9AFF', letterSpacing: '0.06em' }}>Total Approved Expenses</div>
           <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>${approvedExpenses.toLocaleString()}</div>
-          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Cleared Transactions</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Cleared Ledger Entries</div>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
@@ -180,7 +234,9 @@ export default function FinancePage({ lightMode }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Layers style={{ width: 20, height: 20, color: '#4C9AFF' }} />
-                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>Project Financial Accounts & Liquidity</h2>
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>
+                  Project Financial Accounts & Liquidity ({filteredAccounts.length})
+                </h2>
               </div>
               <button onClick={() => setReallocModalOpen(true)} className="btn-ghost" style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
                 Reallocate Funds
@@ -188,7 +244,7 @@ export default function FinancePage({ lightMode }) {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-              {accounts.map(acc => {
+              {filteredAccounts.map(acc => {
                 const allocated = Number(acc.AllocatedBudget || acc.allocatedBudget || 1);
                 const balance = Number(acc.CurrentBalance || acc.currentBalance || 0);
                 const pct = Math.max(0, Math.min(100, Math.round((balance / allocated) * 100)));
@@ -196,13 +252,17 @@ export default function FinancePage({ lightMode }) {
 
                 return (
                   <div key={acc.AccountId || acc.accountId} style={{ padding: 18, borderRadius: 14, background: sectionBg, border: `1px solid ${isOverrun ? 'rgba(255,86,48,0.4)' : border}` }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
                       <div style={{ fontWeight: 800, fontSize: 14, color: textPri }}>{acc.AccountName || acc.accountName}</div>
                       {isOverrun && (
                         <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,86,48,0.15)', color: '#FF8F73', border: '1px solid rgba(255,86,48,0.3)' }}>
                           Low Liquidity
                         </span>
                       )}
+                    </div>
+
+                    <div style={{ fontSize: 11, color: '#4C9AFF', fontWeight: 700, marginBottom: 10 }}>
+                      📁 {acc.ProjectName || acc.projectName || `Project #${acc.ProjectId || acc.projectId}`}
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: textMut, marginBottom: 6 }}>
@@ -235,6 +295,7 @@ export default function FinancePage({ lightMode }) {
                   <thead>
                     <tr>
                       <th>Claim ID</th>
+                      <th>Project Scope</th>
                       <th>Expense Category</th>
                       <th>Logged By</th>
                       <th>Claim Note</th>
@@ -246,6 +307,7 @@ export default function FinancePage({ lightMode }) {
                     {pendingClaims.map(t => (
                       <tr key={t.TransactionId || t.transactionId}>
                         <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: '#4C9AFF' }}>#EXP-{t.TransactionId || t.transactionId}</td>
+                        <td style={{ fontWeight: 700, fontSize: 12, color: textPri }}>📁 {t.ProjectName || t.projectName || `Project #${t.ProjectId}`}</td>
                         <td style={{ fontWeight: 700, color: textPri }}>{t.Type || t.type}</td>
                         <td>{t.LoggedBy || 'Employee Specialist'}</td>
                         <td style={{ fontSize: 12, color: textMut }}>{t.Note || t.note || 'Operational expense claim'}</td>
@@ -281,7 +343,7 @@ export default function FinancePage({ lightMode }) {
                 <FileSpreadsheet style={{ width: 20, height: 20, color: '#57D9A3' }} />
                 <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>General Ledger Transactions Log</h2>
               </div>
-              <span style={{ fontSize: 11, color: textMut }}>{transactions.length} Total Ledger Entries</span>
+              <span style={{ fontSize: 11, color: textMut }}>{filteredTransactions.length} Total Ledger Entries</span>
             </div>
 
             <div style={{ overflowX: 'auto' }}>
@@ -289,6 +351,7 @@ export default function FinancePage({ lightMode }) {
                 <thead>
                   <tr>
                     <th>TX ID</th>
+                    <th>Project</th>
                     <th>Account</th>
                     <th>Category / Type</th>
                     <th>Logged By</th>
@@ -298,11 +361,12 @@ export default function FinancePage({ lightMode }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map(t => {
+                  {filteredTransactions.map(t => {
                     const st = t.Status || t.status || 'Approved';
                     return (
                       <tr key={t.TransactionId || t.transactionId}>
                         <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: textMut }}>#{t.TransactionId || t.transactionId}</td>
+                        <td style={{ fontWeight: 700, fontSize: 12, color: '#4C9AFF' }}>📁 {t.ProjectName || t.projectName || `Project #${t.ProjectId}`}</td>
                         <td style={{ fontWeight: 700, color: textPri }}>{t.AccountName || t.Account || 'Core Account'}</td>
                         <td>{t.Type || t.type}</td>
                         <td>{t.LoggedBy || 'System'}</td>
@@ -389,6 +453,7 @@ export default function FinancePage({ lightMode }) {
                 <thead>
                   <tr>
                     <th>Claim ID</th>
+                    <th>Project</th>
                     <th>Category</th>
                     <th>Claim Description</th>
                     <th>Amount</th>
@@ -397,11 +462,12 @@ export default function FinancePage({ lightMode }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map(t => {
+                  {filteredTransactions.map(t => {
                     const st = t.Status || t.status || 'Approved';
                     return (
                       <tr key={t.TransactionId || t.transactionId}>
                         <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: textMut }}>#EXP-{t.TransactionId || t.transactionId}</td>
+                        <td style={{ fontWeight: 700, fontSize: 12, color: '#4C9AFF' }}>📁 {t.ProjectName || t.projectName || `Project #${t.ProjectId}`}</td>
                         <td style={{ fontWeight: 700, color: textPri }}>{t.Type || t.type}</td>
                         <td style={{ fontSize: 12, color: textMut }}>{t.Note || t.note || 'Reimbursement claim'}</td>
                         <td style={{ fontWeight: 800, color: '#57D9A3', fontFamily: 'JetBrains Mono, monospace' }}>${Number(t.Amount || t.amount).toLocaleString()}</td>
@@ -426,6 +492,7 @@ export default function FinancePage({ lightMode }) {
         isOpen={reallocModalOpen}
         onClose={() => setReallocModalOpen(false)}
         accounts={accounts}
+        projects={projects}
         onReallocated={loadFinanceData}
         lightMode={lightMode}
       />
@@ -434,6 +501,7 @@ export default function FinancePage({ lightMode }) {
         isOpen={claimModalOpen}
         onClose={() => setClaimModalOpen(false)}
         accounts={accounts}
+        projects={projects}
         user={user}
         onClaimSubmitted={loadFinanceData}
         lightMode={lightMode}

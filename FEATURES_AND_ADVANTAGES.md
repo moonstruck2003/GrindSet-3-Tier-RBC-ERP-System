@@ -131,25 +131,26 @@ Signups follow a multi-stage approval hierarchy:
 
 ---
 
-## 10. End-to-End ERP Finance & General Ledger Subsystem (`FinancePage`)
+## 10. End-to-End Multi-Project ERP Finance & General Ledger Subsystem (`FinancePage`)
 
 ### What It Does
-Provides full-featured enterprise financial management tailored to user roles:
+Provides full-featured enterprise financial management with **Multi-Project Scope Filtering & Budget Isolation**:
+- **Multi-Project Scope Selector Bar**: Switch between *All Projects* view or filter financial accounts, transactions, and pending claims for specific projects (*Core ERP Platform*, *AI Predictive Analytics Suite*, *Mobile Workforce App*).
 - **CFO / Company Owner Perspective**:
-  - **Financial Accounts & Liquidity**: Track accounts (*Engineering Operations*, *Cloud DevOps*, *R&D*) with real-time liquidity progress bars and low-balance warnings (< 20%).
-  - **Inter-Account Budget Reallocations (`FundReallocationModal`)**: Reallocate budget between accounts with mandatory audit reason logging.
-  - **Expense Approval Queue**: Approve or reject employee reimbursement claims; approved claims automatically deduct from account balances.
-  - **General Ledger Audit Table**: Filterable transaction log with Status Lozenges (*Approved*, *Pending*, *Rejected*).
-  - **1-Click CSV Report Exporter**: Stream general ledger data into downloadable CSV files.
+  - **Financial Accounts & Liquidity**: Track operating accounts per project with real-time liquidity progress bars and low-balance warnings (< 20%).
+  - **Project-Aware Inter-Account Reallocations (`FundReallocationModal`)**: Reallocate budget between project accounts with mandatory audit reason logging.
+  - **Expense Approval Queue**: Approve or reject employee reimbursement claims; approved claims automatically deduct from target account balances.
+  - **General Ledger Audit Table**: Filterable multi-project transaction log with Status Lozenges (*Approved*, *Pending*, *Rejected*).
+  - **Project-Scoped 1-Click CSV Report Exporter**: Stream general ledger data into downloadable CSV files (supports `?projectId=` parameter filtering).
 - **Employee Perspective**:
   - **Hourly Billing & Timesheet Calculator**: Interactive calculator for weekly billable hours @ $85/hr, projecting monthly gross earnings.
-  - **Submit Reimbursement Claim (`ExpenseClaimModal`)**: Submit operational expense claims (*Dev Hardware*, *AWS Bill*, *Travel*) tied to project accounts.
+  - **Submit Reimbursement Claim (`ExpenseClaimModal`)**: Submit operational expense claims (*Dev Hardware*, *AWS Bill*, *Travel*) tied to specific project accounts.
   - **Personal Claims Tracker**: Real-time status tracking for submitted reimbursement claims.
 
 ### Enterprise Advantage
-- **Real-Time Financial Control**: Gives C-suite executive visibility into cash flow, liquidity balances, and operating expenses.
-- **Automated Expense Management**: Eliminates paper receipts by digitizing reimbursement claims and approval workflows.
-- **Audit-Ready Reporting**: 1-click CSV export simplifies quarterly P&L accounting and external audits.
+- **Multi-Project Financial Isolation**: Prevents cost commingling across different clients or business units.
+- **Real-Time Executive Oversight**: Gives C-suite visibility into aggregate company cash flow as well as granular project-level margins.
+- **Audit-Ready Exporting**: Project-specific CSV downloads simplify multi-client billing, tax filings, and external GAAP audits.
 
 ---
 

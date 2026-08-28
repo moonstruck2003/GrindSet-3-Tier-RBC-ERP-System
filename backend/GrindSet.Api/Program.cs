@@ -168,6 +168,7 @@ app.MapGet("/api/transactions", async (GrindSetDbContext db) =>
 {
     var transactions = await (from tx in db.Transactions
                               join acc in db.FinancialAccounts on tx.AccountId equals acc.AccountId
+                              join proj in db.Projects on acc.ProjectId equals proj.ProjectId
                               join emp in db.Employees on tx.LoggedByEmployeeId equals emp.EmployeeId into empGroup
                               from emp in empGroup.DefaultIfEmpty()
                               select new
@@ -175,9 +176,13 @@ app.MapGet("/api/transactions", async (GrindSetDbContext db) =>
                                   tx.TransactionId,
                                   tx.AccountId,
                                   AccountName = acc.AccountName,
+                                  ProjectId = acc.ProjectId,
+                                  ProjectName = proj.ProjectName,
                                   LoggedBy = emp != null ? emp.FullName : "System",
                                   tx.Type,
                                   tx.Amount,
+                                  tx.Status,
+                                  tx.Note,
                                   tx.TransactionDate
                               }).OrderByDescending(t => t.TransactionDate).ToListAsync();
     return Results.Ok(transactions);
@@ -231,7 +236,17 @@ app.MapPost("/api/transactions", async (GrindSetDbContext db, TransactionDto dto
 // GET /api/accounts - financial accounts
 app.MapGet("/api/accounts", async (GrindSetDbContext db) =>
 {
-    var accounts = await db.FinancialAccounts.ToListAsync();
+    var accounts = await (from acc in db.FinancialAccounts
+                          join p in db.Projects on acc.ProjectId equals p.ProjectId
+                          select new
+                          {
+                              acc.AccountId,
+                              acc.ProjectId,
+                              ProjectName = p.ProjectName,
+                              acc.AccountName,
+                              acc.AllocatedBudget,
+                              acc.CurrentBalance
+                          }).ToListAsync();
     return Results.Ok(accounts);
 });
 
