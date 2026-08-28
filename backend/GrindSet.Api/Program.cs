@@ -103,6 +103,27 @@ app.MapGet("/api/projects", async (GrindSetDbContext db) =>
     return Results.Ok(projects);
 });
 
+app.MapGet("/api/projects/details", async (GrindSetDbContext db) =>
+{
+    var list = await (from p in db.Projects
+                      join s in db.ProjectScopes on p.ProjectId equals s.ProjectId into sGrp
+                      from s in sGrp.DefaultIfEmpty()
+                      select new
+                      {
+                          p.ProjectId,
+                          p.CompanyId,
+                          p.ProjectName,
+                          p.Status,
+                          p.TotalBudget,
+                          ScopeDescription = s != null ? s.ScopeDescription : "Enterprise software development & cloud infrastructure milestone.",
+                          Objectives = s != null ? s.Objectives : "On-time delivery, compliance, and zero budget overrun.",
+                          AccountCount = db.FinancialAccounts.Count(a => a.ProjectId == p.ProjectId),
+                          TaskCount = db.Tasks.Count(t => t.ProjectId == p.ProjectId),
+                          CompletedTaskCount = db.Tasks.Count(t => t.ProjectId == p.ProjectId && t.Status == "Done")
+                      }).ToListAsync();
+    return Results.Ok(list);
+});
+
 app.MapGet("/api/users", async (GrindSetDbContext db) =>
 {
     var users = await db.Users.Select(u => new { u.UserId, u.Email, u.Role, u.IsActive, u.ApprovalStatus, u.ReportedNote }).ToListAsync();

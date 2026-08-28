@@ -1,194 +1,464 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { FolderKanban, Calendar, DollarSign, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react';
+import {
+  FolderKanban, Calendar, DollarSign, TrendingUp, CheckCircle, AlertCircle,
+  Clock, Target, Layers, Plus, Filter, ArrowRight, Eye, ChevronRight, CheckSquare, Sparkles
+} from 'lucide-react';
 import { api } from '../config/api';
-import { useTheme } from '../config/theme';
+import ProjectDetailModal from '../components/ProjectDetailModal';
 
-const STATUS = {
-  'In Progress': { bg: 'rgba(255,171,0,0.15)',  color: '#FFDA75', bdr: 'rgba(255,171,0,0.3)',  dot: '#FFAB00' },
-  'Completed':   { bg: 'rgba(54,179,126,0.15)', color: '#57D9A3', bdr: 'rgba(54,179,126,0.3)', dot: '#36B37E' },
-  'On Hold':     { bg: 'rgba(255,86,48,0.15)',  color: '#FF8F73', bdr: 'rgba(255,86,48,0.3)',  dot: '#FF5630' },
-  'Planning':    { bg: 'rgba(0,82,204,0.15)',   color: '#4C9AFF', bdr: 'rgba(0,82,204,0.3)',   dot: '#0052CC' },
+const STATUS_CONFIG = {
+  'In Progress': { bg: 'rgba(255,171,0,0.15)', color: '#FFDA75', bdr: 'rgba(255,171,0,0.3)', dot: '#FFAB00', health: 'On Track' },
+  'Completed':   { bg: 'rgba(54,179,126,0.15)', color: '#57D9A3', bdr: 'rgba(54,179,126,0.3)', dot: '#36B37E', health: 'Delivered' },
+  'On Hold':     { bg: 'rgba(255,86,48,0.15)',  color: '#FF8F73', bdr: 'rgba(255,86,48,0.3)',  dot: '#FF5630', health: 'At Risk' },
+  'Planning':    { bg: 'rgba(0,82,204,0.15)',   color: '#4C9AFF', bdr: 'rgba(0,82,204,0.3)',   dot: '#0052CC', health: 'Scoping' },
 };
 
-const KANBAN = [
-  { title:'To Do',       dot:'#8993A4', cards:[
-    { id:'GS-12', title:'RBAC Permissions Matrix',   tag:'Auth',     tagC:'#FF8F73', tagBg:'rgba(255,86,48,0.12)' },
-    { id:'GS-13', title:'Reset Password Flow',       tag:'Auth',     tagC:'#FF8F73', tagBg:'rgba(255,86,48,0.12)' },
-  ]},
-  { title:'In Progress', dot:'#FFAB00', cards:[
-    { id:'GS-08', title:'Employee Onboarding API',   tag:'Workforce',tagC:'#57D9A3', tagBg:'rgba(54,179,126,0.12)' },
-    { id:'GS-09', title:'React Dashboard Shell',     tag:'Frontend', tagC:'#4C9AFF', tagBg:'rgba(0,82,204,0.12)' },
-  ]},
-  { title:'In Review',   dot:'#00B8D9', cards:[
-    { id:'GS-05', title:'EF Core Migrations Setup',  tag:'Backend',  tagC:'#BF9AFF', tagBg:'rgba(101,84,192,0.12)' },
-  ]},
-  { title:'Done',        dot:'#36B37E', cards:[
-    { id:'GS-01', title:'Monorepo Scaffold',         tag:'Infra',    tagC:'#79E8F5', tagBg:'rgba(0,184,217,0.12)' },
-    { id:'GS-02', title:'SQLite 20-Table ERD',       tag:'Database', tagC:'#FFDA75', tagBg:'rgba(255,171,0,0.12)' },
-    { id:'GS-03', title:'Swagger OpenAPI Docs',      tag:'Backend',  tagC:'#BF9AFF', tagBg:'rgba(101,84,192,0.12)' },
-  ]},
-];
-
-function ProgressBar({ pct, dot, delay }) {
+function ProgressBar({ pct, dot }) {
   return (
-    <div style={{ height: 5, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
+    <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
       <motion.div
-        initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.9, delay }}
-        style={{ height: '100%', borderRadius: 99, background: `linear-gradient(90deg,${dot}66,${dot})` }}
+        initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }}
+        style={{ height: '100%', borderRadius: 99, background: `linear-gradient(90deg, ${dot}88, ${dot})` }}
       />
     </div>
   );
 }
 
 export default function ProjectsPage({ lightMode }) {
-  const T = useTheme(lightMode);
   const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Presentation View: 'cards' | 'roadmap' | 'kanban'
   const [view, setView] = useState('cards');
 
+  // Kanban Scope Filter: 'all' or numeric project ID
+  const [selectedProjectId, setSelectedProjectId] = useState('all');
+
+  // Detail Modal State
+  const [selectedProjectForDetail, setSelectedProjectForDetail] = useState(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [projRes, taskRes, accRes] = await Promise.all([
+        api.projectDetails().catch(() => api.projects().catch(() => [])),
+        api.tasks().catch(() => []),
+        api.accounts().catch(() => []),
+      ]);
+      setProjects(projRes);
+      setTasks(taskRes);
+      setAccounts(accRes);
+    } catch (err) {
+      console.error('Failed to load project management data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    api.projects().then(setProjects).catch(() => setProjects([])).finally(() => setLoading(false));
+    loadData();
   }, []);
 
-  const demoProjects = [{ projectId:1, projectName:'Core ERP Platform v1.0', status:'In Progress', totalBudget:250000, companyId:2 }];
-  const list = projects.length ? projects : demoProjects;
+  // Update Task Status Inline (Lightweight Kanban Action)
+  const handleUpdateTaskStatus = async (taskId, newStatus) => {
+    try {
+      await api.updateTask(taskId, { status: newStatus });
+      loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to update task status.');
+    }
+  };
 
-  const totalBudget = list.reduce((s,p) => s + Number(p.totalBudget || 0), 0);
+  const totalBudget = projects.reduce((s, p) => s + Number(p.TotalBudget || p.totalBudget || 0), 0);
+
+  // Theme Tokens
+  const textPri = lightMode ? '#091E42' : '#F4F5F7';
+  const textMut = lightMode ? '#5E6C84' : '#8993A4';
+  const cardBg = lightMode ? 'rgba(255,255,255,0.92)' : 'rgba(11,27,61,0.65)';
+  const border = lightMode ? '#DFE1E6' : 'rgba(255,255,255,0.08)';
+  const sectionBg = lightMode ? '#F4F5F7' : 'rgba(255,255,255,0.03)';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+      {/* Header & Presentation View Toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, color: T.textPri, margin: 0 }}>
-            Project{' '}
-            <span style={{ background: 'linear-gradient(135deg,#FFE380,#FFAB00)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Management</span>
-          </h2>
-          <p style={{ fontSize: 13, color: T.textMut, marginTop: 4 }}>{list.length} project{list.length !== 1 ? 's' : ''} in the portfolio</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #0052CC, #FFAB00)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+              <FolderKanban style={{ width: 20, height: 20 }} />
+            </div>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 900, color: textPri, margin: 0 }}>
+                Enterprise Project Portfolio Management
+              </h1>
+              <p style={{ fontSize: 13, color: textMut, margin: 0, marginTop: 2 }}>
+                {projects.length} Active Portfolio Projects &nbsp;·&nbsp; Milestone Roadmaps &nbsp;·&nbsp; Sprint Backlogs
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* View toggle */}
-        <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid ${T.cardBdr}` }}>
-          {['cards','kanban'].map(v => (
-            <button key={v} onClick={() => setView(v)}
-              style={{ padding: '8px 18px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', textTransform: 'capitalize', fontFamily: 'Inter, sans-serif',
-                background: view === v ? '#0052CC' : T.cardBg, color: view === v ? 'white' : T.textMut, transition: 'all .15s' }}>
-              {v === 'cards' ? '⊞ Cards' : '⊟ Kanban'}
+        {/* View Switcher Pills */}
+        <div style={{ display: 'flex', gap: 6, background: lightMode ? '#EAECEF' : 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 12, border: `1px solid ${border}` }}>
+          {[
+            { id: 'cards', label: '⊞ Portfolio Cards' },
+            { id: 'roadmap', label: '🗓️ Epic Roadmap Timeline' },
+            { id: 'kanban', label: '⊟ Sprint Kanban Board' },
+          ].map(v => (
+            <button
+              key={v.id}
+              onClick={() => setView(v.id)}
+              style={{
+                padding: '8px 16px', borderRadius: 9, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: view === v.id ? '#0052CC' : 'transparent',
+                color: view === v.id ? 'white' : textMut,
+                transition: 'all 0.15s'
+              }}
+            >
+              {v.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 14 }}>
-        {[
-          { label:'Total Budget',  value:`$${totalBudget.toLocaleString()}`,                   color:'#57D9A3', icon:DollarSign  },
-          { label:'In Progress',   value:list.filter(p=>p.status==='In Progress').length,       color:'#FFDA75', icon:TrendingUp  },
-          { label:'Completed',     value:list.filter(p=>p.status==='Completed').length,         color:'#BF9AFF', icon:CheckCircle },
-          { label:'On Hold',       value:list.filter(p=>p.status==='On Hold').length,           color:'#FF8F73', icon:AlertCircle },
-        ].map((s, i) => (
-          <motion.div key={i} initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.06 }}
-            style={{ background: T.cardBg, border: `1px solid ${T.cardBdr}`, borderRadius: 14, padding: '14px 16px',
-              display: 'flex', alignItems: 'center', gap: 12, backdropFilter: 'blur(12px)' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: `${s.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <s.icon style={{ width: 17, height: 17, color: s.color }} />
-            </div>
-            <div>
-              <p style={{ fontSize: 20, fontWeight: 900, color: s.color, margin: 0 }}>{s.value}</p>
-              <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.textMut, margin: 0 }}>{s.label}</p>
-            </div>
-          </motion.div>
-        ))}
+      {/* Overview KPI Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#57D9A3', letterSpacing: '0.06em' }}>Total Portfolio Budget</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>${totalBudget.toLocaleString()}</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Across {projects.length} Active Projects</div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#FFDA75', letterSpacing: '0.06em' }}>In Progress Projects</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
+            {projects.filter(p => (p.Status || p.status) === 'In Progress').length}
+          </div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Active Delivery Milestones</div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#4C9AFF', letterSpacing: '0.06em' }}>Completed Milestones</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
+            {projects.filter(p => (p.Status || p.status) === 'Completed').length}
+          </div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Delivered Initiatives</div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#BF9AFF', letterSpacing: '0.06em' }}>Total Sprint Tasks</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>{tasks.length} Tasks</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>{tasks.filter(t => (t.Status || t.status) === 'Done').length} Tasks Completed</div>
+        </motion.div>
       </div>
 
-      {/* Cards view */}
+      {/* ── PRESENTATION 1: PORTFOLIO CARDS VIEW ── */}
       {view === 'cards' && (
-        loading
-          ? <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:16 }}>
-              {[1,2,3].map(i => <div key={i} style={{ height:220, borderRadius:16, background: T.shimmer, backgroundSize:'200% 100%', animation:'shimmer 1.5s infinite' }} />)}
-            </div>
-          : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:16 }}>
-              {list.map((p, i) => {
-                const s = STATUS[p.status] ?? STATUS['Planning'];
-                const pct = 40 + (i * 17 + 22) % 45;
-                return (
-                  <motion.div key={p.projectId}
-                    initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.07 }}
-                    whileHover={{ y:-5, boxShadow:`0 18px 52px ${s.dot}18` }}
-                    style={{ background: T.cardBg, border: `1px solid ${T.cardBdr}`, borderTop:`3px solid ${s.dot}`,
-                      borderRadius:16, padding:20, display:'flex', flexDirection:'column', gap:14, backdropFilter:'blur(12px)', cursor:'default' }}>
-                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
-                      <div style={{ width:40, height:40, borderRadius:12, background:`${s.dot}15`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        <FolderKanban style={{ width:20, height:20, color:s.dot }} />
-                      </div>
-                      <span style={{ padding:'3px 10px', borderRadius:999, fontSize:10, fontWeight:700, background:s.bg, color:s.color, border:`1px solid ${s.bdr}` }}>
-                        {p.status}
-                      </span>
-                    </div>
-                    <div>
-                      <p style={{ fontWeight:800, fontSize:14, color:T.textPri, margin:'0 0 4px' }}>{p.projectName}</p>
-                      <p style={{ fontSize:11, color:T.textMut, margin:0 }}>Project #{String(p.projectId).padStart(3,'0')}</p>
-                    </div>
-                    <div>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:T.textMut, marginBottom:6 }}>
-                        <span>Completion</span>
-                        <span style={{ fontWeight:800, color:s.dot }}>{pct}%</span>
-                      </div>
-                      <ProgressBar pct={pct} dot={s.dot} delay={i*0.07 + 0.3} />
-                    </div>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:T.textMut }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                        <DollarSign style={{ width:13, height:13 }} />
-                        <span style={{ fontWeight:700, color:'#57D9A3', fontFamily:'JetBrains Mono,monospace' }}>
-                          ${Number(p.totalBudget).toLocaleString()}
-                        </span>
-                      </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                        <Calendar style={{ width:13, height:13 }} />
-                        <span>Q4 2026</span>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-      )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+          {projects.map((p, i) => {
+            const id = Number(p.ProjectId || p.projectId);
+            const name = p.ProjectName || p.projectName || `Project #${id}`;
+            const status = p.Status || p.status || 'In Progress';
+            const budget = Number(p.TotalBudget || p.totalBudget || 0);
+            const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG['In Progress'];
+            const scopeDesc = p.ScopeDescription || p.scopeDescription || 'Enterprise software initiative.';
 
-      {/* Kanban view */}
-      {view === 'kanban' && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:16 }}>
-          {KANBAN.map((col, ci) => (
-            <motion.div key={col.title}
-              initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay: ci*0.07 }}
-              style={{ background: T.cardBg, border:`1px solid ${T.cardBdr}`, borderRadius:16, overflow:'hidden', backdropFilter:'blur(12px)' }}>
-              {/* Column header */}
-              <div style={{ display:'flex', alignItems:'center', gap:8, padding:'13px 16px', borderBottom:`1px solid ${T.divider}`, borderTop:`2px solid ${col.dot}` }}>
-                <span style={{ width:8, height:8, borderRadius:'50%', background:col.dot, boxShadow:`0 0 6px ${col.dot}` }} />
-                <p style={{ fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.08em', color:col.dot, margin:0 }}>{col.title}</p>
-                <span style={{ marginLeft:'auto', padding:'2px 8px', borderRadius:999, fontSize:10, fontWeight:800, background:`${col.dot}15`, color:col.dot }}>
-                  {col.cards.length}
-                </span>
-              </div>
-              {/* Cards */}
-              <div style={{ padding:'10px 10px', display:'flex', flexDirection:'column', gap:8 }}>
-                {col.cards.map(card => (
-                  <motion.div key={card.id} whileHover={{ scale:1.02 }}
-                    style={{ padding:'10px 12px', borderRadius:10, border:`1px solid ${T.divider}`,
-                      background: lightMode ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.04)', cursor:'pointer' }}>
-                    <p style={{ fontSize:10, fontFamily:'JetBrains Mono,monospace', color:T.textMut, margin:'0 0 5px' }}>{card.id}</p>
-                    <p style={{ fontSize:12, fontWeight:600, color:T.textPri, margin:'0 0 8px', lineHeight:1.4 }}>{card.title}</p>
-                    <span style={{ padding:'2px 8px', borderRadius:999, fontSize:10, fontWeight:700, background:card.tagBg, color:card.tagC }}>
-                      {card.tag}
+            // Calculate task completion percentage
+            const projTasks = tasks.filter(t => Number(t.ProjectId || t.projectId) === id);
+            const doneTasks = projTasks.filter(t => (t.Status || t.status) === 'Done');
+            const pct = projTasks.length > 0 ? Math.round((doneTasks.length / projTasks.length) * 100) : (i * 25 + 35) % 95;
+
+            return (
+              <motion.div
+                key={id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                whileHover={{ y: -4 }}
+                className="glass"
+                style={{
+                  padding: 22, borderRadius: 18, background: cardBg, border: `1px solid ${border}`,
+                  borderTop: `3px solid ${cfg.dot}`, display: 'flex', flexDirection: 'column', gap: 14,
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: `${cfg.dot}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FolderKanban style={{ width: 22, height: 22, color: cfg.dot }} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.bdr}` }}>
+                      {status}
                     </span>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 style={{ fontWeight: 800, fontSize: 16, color: textPri, margin: 0 }}>{name}</h3>
+                  <p style={{ fontSize: 11, color: textMut, margin: 0, marginTop: 4, lineHeight: 1.4, height: 32, overflow: 'hidden' }}>
+                    {scopeDesc}
+                  </p>
+                </div>
+
+                {/* Progress bar */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: textMut, marginBottom: 6 }}>
+                    <span>Sprint Milestone Completion</span>
+                    <span style={{ fontWeight: 800, color: cfg.dot, fontFamily: 'JetBrains Mono, monospace' }}>{pct}%</span>
+                  </div>
+                  <ProgressBar pct={pct} dot={cfg.dot} />
+                </div>
+
+                {/* Footer metrics */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: `1px solid ${border}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#57D9A3', fontFamily: 'JetBrains Mono, monospace' }}>
+                    ${budget.toLocaleString()}
+                  </div>
+
+                  <button
+                    onClick={() => { setSelectedProjectForDetail(p); setDetailModalOpen(true); }}
+                    className="btn-ghost"
+                    style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <Eye style={{ width: 13, height: 13 }} /> Inspect Project
+                  </button>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       )}
+
+      {/* ── PRESENTATION 2: INTERACTIVE MILESTONE ROADMAP TIMELINE VIEW ── */}
+      {view === 'roadmap' && (
+        <div className="glass" style={{ padding: 26, borderRadius: 20, background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 900, color: textPri, margin: 0 }}>
+                Enterprise Quarterly Epic & Milestone Roadmap
+              </h2>
+              <p style={{ fontSize: 12, color: textMut, margin: 0, marginTop: 2 }}>
+                Strategic Multi-Project Execution Schedule (Q1 2026 – Q4 2026)
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: 14, fontSize: 11, fontWeight: 700 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#57D9A3' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#36B37E' }} /> On Track
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FFDA75' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FFAB00' }} /> In Scoping
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#FF8F73' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF5630' }} /> Milestone Review
+              </span>
+            </div>
+          </div>
+
+          {/* Quarterly Timeline Header Bar */}
+          <div style={{ display: 'grid', gridTemplateColumns: '220px repeat(4, 1fr)', gap: 12, paddingBottom: 12, borderBottom: `1px solid ${border}`, fontWeight: 800, fontSize: 12, color: textMut, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <div>Project Epic</div>
+            <div style={{ textAlign: 'center' }}>Q1 2026</div>
+            <div style={{ textAlign: 'center' }}>Q2 2026</div>
+            <div style={{ textAlign: 'center' }}>Q3 2026</div>
+            <div style={{ textAlign: 'center' }}>Q4 2026</div>
+          </div>
+
+          {/* Project Timeline Rows */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+            {projects.map((p, idx) => {
+              const id = Number(p.ProjectId || p.projectId);
+              const name = p.ProjectName || p.projectName || `Project #${id}`;
+              const budget = Number(p.TotalBudget || p.totalBudget || 0);
+
+              // Calculate Gantt offset span based on index
+              const startQuarter = (idx % 3) + 1;
+              const quarterSpan = Math.min(4 - startQuarter + 1, 2);
+              const status = p.Status || p.status || 'In Progress';
+              const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG['In Progress'];
+
+              return (
+                <div key={id} style={{ display: 'grid', gridTemplateColumns: '220px repeat(4, 1fr)', gap: 12, alignItems: 'center' }}>
+                  {/* Left Title */}
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: textPri }}>{name}</div>
+                    <div style={{ fontSize: 11, color: textMut, marginTop: 2 }}>
+                      Budget: ${budget.toLocaleString()}
+                    </div>
+                  </div>
+
+                  {/* Right Timeline Grid Bar */}
+                  <div style={{ gridColumn: `span 4`, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, height: 44, position: 'relative', alignItems: 'center' }}>
+                    <div
+                      style={{
+                        gridColumn: `${startQuarter} / span ${quarterSpan}`,
+                        height: 38, borderRadius: 10,
+                        background: `linear-gradient(90deg, ${cfg.dot}22, ${cfg.dot}44)`,
+                        border: `1px solid ${cfg.dot}`,
+                        padding: '0 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        boxShadow: `0 4px 14px ${cfg.dot}20`
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Sparkles style={{ width: 14, height: 14, color: cfg.dot }} />
+                        <span style={{ fontSize: 11, fontWeight: 800, color: textPri }}>
+                          {idx === 0 ? 'M1: Architecture & Auth' : idx === 1 ? 'M2: AI Analytics Engine' : 'M3: Mobile Workforce iOS'}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: cfg.dot, color: 'white' }}>
+                        {cfg.health}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── PRESENTATION 3: UNIQUE & LIGHTWEIGHT SPRINT KANBAN BOARD ── */}
+      {view === 'kanban' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* Kanban Scope Selector */}
+          <div className="glass" style={{ padding: '14px 20px', borderRadius: 14, background: cardBg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Filter style={{ width: 16, height: 16, color: '#0052CC' }} />
+              <span style={{ fontSize: 13, fontWeight: 800, color: textPri }}>Filter Board Scope:</span>
+              <select
+                className="gs-input"
+                style={{ width: 240, padding: '6px 10px', fontSize: 12 }}
+                value={selectedProjectId}
+                onChange={e => setSelectedProjectId(e.target.value)}
+              >
+                <option value="all">🌐 All Projects ({projects.length})</option>
+                {projects.map(p => {
+                  const id = p.ProjectId || p.projectId;
+                  return <option key={id} value={id}>📁 {p.ProjectName || p.projectName}</option>;
+                })}
+              </select>
+            </div>
+
+            <span style={{ fontSize: 12, color: textMut }}>
+              Showing {tasks.filter(t => selectedProjectId === 'all' || String(t.ProjectId || t.projectId) === String(selectedProjectId)).length} Filtered Tasks
+            </span>
+          </div>
+
+          {/* Lightweight 4-Column Board */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+            {[
+              { statusKey: 'To Do', label: 'To Do', color: '#8993A4', nextStatus: 'In Progress', nextLabel: '→ In Progress' },
+              { statusKey: 'In Progress', label: 'In Progress', color: '#FFAB00', nextStatus: 'In Review', nextLabel: '→ In Review' },
+              { statusKey: 'In Review', label: 'In Review', color: '#00B8D9', nextStatus: 'Done', nextLabel: '✓ Mark Done' },
+              { statusKey: 'Done', label: 'Done', color: '#36B37E', nextStatus: 'In Progress', nextLabel: '↺ Reopen' },
+            ].map(col => {
+              const colTasks = tasks
+                .filter(t => selectedProjectId === 'all' || String(t.ProjectId || t.projectId) === String(selectedProjectId))
+                .filter(t => (t.Status || t.status || 'To Do') === col.statusKey);
+
+              const totalPoints = colTasks.reduce((s, t) => s + Number(t.StoryPoints || t.storyPoints || 1), 0);
+
+              return (
+                <div key={col.statusKey} className="glass" style={{ borderRadius: 16, background: cardBg, border: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  {/* Column Header */}
+                  <div style={{ padding: '14px 16px', borderBottom: `1px solid ${border}`, borderTop: `3px solid ${col.color}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.color }} />
+                      <h3 style={{ fontSize: 13, fontWeight: 900, textTransform: 'uppercase', color: col.color, margin: 0, letterSpacing: '0.06em' }}>
+                        {col.label}
+                      </h3>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: `${col.color}20`, color: col.color }}>
+                      {colTasks.length} ({totalPoints} pts)
+                    </span>
+                  </div>
+
+                  {/* Task Cards Container */}
+                  <div style={{ padding: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 280, background: sectionBg }}>
+                    {colTasks.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: textMut, fontSize: 11, fontStyle: 'italic' }}>
+                        No tasks in {col.label}
+                      </div>
+                    ) : (
+                      colTasks.map(t => {
+                        const id = t.TaskId || t.taskId;
+                        const title = t.Title || t.title;
+                        const projName = t.ProjectName || t.projectName || 'Core Project';
+                        const assignee = t.AssigneeName || t.assigneeName || 'Unassigned';
+                        const priority = t.Priority || t.priority || 'Medium';
+                        const pts = t.StoryPoints || t.storyPoints || 1;
+
+                        const priColor = priority === 'Highest' || priority === 'High' ? '#FF8F73' : priority === 'Medium' ? '#FFDA75' : '#4C9AFF';
+
+                        return (
+                          <motion.div
+                            key={id}
+                            whileHover={{ y: -2 }}
+                            style={{
+                              padding: 12, borderRadius: 12, background: lightMode ? '#FFFFFF' : 'rgba(255,255,255,0.05)',
+                              border: `1px solid ${border}`, display: 'flex', flexDirection: 'column', gap: 8,
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: textMut }}>#GS-{id}</span>
+                              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: `${priColor}20`, color: priColor }}>
+                                {priority}
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: 13, fontWeight: 700, color: textPri, lineHeight: 1.3 }}>{title}</div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: textMut }}>
+                              <span>📁 {projName}</span>
+                              <span style={{ fontWeight: 700, color: '#4C9AFF' }}>{pts} pts</span>
+                            </div>
+
+                            {/* Lightweight 1-Click Fast Transition Button */}
+                            <div style={{ paddingTop: 6, borderTop: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: 10, color: textMut }}>👤 {assignee}</span>
+
+                              <button
+                                onClick={() => handleUpdateTaskStatus(id, col.nextStatus)}
+                                style={{
+                                  padding: '3px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700,
+                                  background: `${col.color}18`, color: col.color, border: `1px solid ${col.color}40`,
+                                  cursor: 'pointer', transition: 'all 0.15s'
+                                }}
+                              >
+                                {col.nextLabel}
+                              </button>
+                            </div>
+                          </motion.div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+        </div>
+      )}
+
+      {/* Render Project Inspection Modal */}
+      <ProjectDetailModal
+        isOpen={detailModalOpen}
+        onClose={() => setDetailModalOpen(false)}
+        project={selectedProjectForDetail}
+        accounts={accounts}
+        tasks={tasks}
+        lightMode={lightMode}
+      />
+
     </div>
   );
 }

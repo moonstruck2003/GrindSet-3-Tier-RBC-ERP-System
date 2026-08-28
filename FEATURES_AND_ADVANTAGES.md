@@ -205,10 +205,31 @@ Implements industry-standard cryptographic JSON Web Token (JWT) authentication a
 
 ---
 
+## 14. Interactive Epic Roadmap, Milestone Timelines & Lightweight Sprint Kanban (`ProjectsPage`)
+
+### What It Does
+Upgrades project management into an enterprise portfolio management suite offering 3 distinct presentation views:
+- **⊞ Portfolio Cards View**: Displays project completion progress, health lozenges (*On Track*, *At Risk*, *Delivered*), total budgets, and 1-click **Inspect Project** trigger to open `ProjectDetailModal.jsx`.
+- **🗓️ Interactive Epic Roadmap Timeline View**: Visual quarterly epic schedule (Q1–Q4) tracking project milestone targets (*M1 Architecture*, *M2 AI Engine*, *M3 Mobile Release*) and health indicators across time boundaries.
+- **⊟ Unique & Lightweight Sprint Kanban Board**:
+  - Live tasks integration connected to `/api/tasks` with a **Project Scope Filter Bar** (`🌐 All Projects` or specific project dropdown).
+  - 4 status columns (*To Do*, *In Progress*, *In Review*, *Done*) with story point totals.
+  - **Fast 1-Click Status Transition Buttons** (`→ In Progress`, `→ In Review`, `✓ Mark Done`) for zero-drag-lag, instant sprint progression.
+  - Priority pills (*Highest*, *High*, *Medium*, *Low*).
+- **Project Inspector Drawer (`ProjectDetailModal`)**: Deep project inspection drawer displaying project scope/objectives, linked operating financial accounts, assigned workforce, and sprint task backlogs.
+
+### Enterprise Advantage
+- **C-Suite & Developer Alignment**: Gives executives visual roadmap timelines while developers get a lightweight, fast sprint Kanban board.
+- **Zero Drag Overhead**: 1-click fast status transitions allow rapid task movement without clunky drag-and-drop glitches.
+- **Deep Scope Transparency**: Inspection drawer connects financial accounts and tasks directly to strategic project objectives.
+
+---
+
 ## 🛠️ Summary Architecture Matrix
 
 | Component / Module | Inspired By | Core Purpose | Enterprise Advantage |
 | :--- | :--- | :--- | :--- |
+| **Project Roadmap & Kanban** | Jira Product Discovery / Linear | Quarterly epics & lightweight sprint Kanban | Visual C-suite roadmaps & fast dev sprint movement |
 | **JWT Bearer Auth** | OAuth2 / OIDC | Cryptographic token signing & Bearer headers | Stateless, tamper-proof enterprise security |
 | **3-Tier RBAC & Dashboards** | Jira / SAP | Role isolation (Admin, Company, Employee) | Zero cross-tenant data leakage |
 | **Pending Blur Overlay** | Atlassian | Locks unapproved signups behind modal | Prevents unauthorized tenant access |
