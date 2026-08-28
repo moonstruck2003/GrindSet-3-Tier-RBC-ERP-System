@@ -222,9 +222,15 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                   value={taskProjectId}
                   onChange={e => setTaskProjectId(e.target.value)}
                 >
-                  {projects.map(p => (
-                    <option key={p.projectId} value={p.projectId}>{p.projectName} (#{p.projectId})</option>
-                  ))}
+                  {projects.map(p => {
+                    const id = p.projectId ?? p.ProjectId;
+                    const name = p.projectName ?? p.ProjectName ?? `Project #${id}`;
+                    return (
+                      <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                        {name} (#{id})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -262,10 +268,10 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                     value={taskPriority}
                     onChange={e => setTaskPriority(e.target.value)}
                   >
-                    <option value="Highest">Highest</option>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
+                    <option value="Highest" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Highest</option>
+                    <option value="High" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>High</option>
+                    <option value="Medium" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Medium</option>
+                    <option value="Low" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Low</option>
                   </select>
                 </div>
 
@@ -277,10 +283,16 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                     value={taskAssigneeId}
                     onChange={e => setTaskAssigneeId(e.target.value)}
                   >
-                    <option value="">Unassigned</option>
-                    {employees.map(emp => (
-                      <option key={emp.EmployeeId} value={emp.EmployeeId}>{emp.FullName}</option>
-                    ))}
+                    <option value="" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Unassigned</option>
+                    {employees.map(emp => {
+                      const id = emp.EmployeeId ?? emp.employeeId ?? emp.UserId ?? emp.userId;
+                      const name = emp.FullName ?? emp.fullName ?? emp.Email ?? emp.email ?? `Employee #${id}`;
+                      return (
+                        <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                          {name}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 

@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Coins, X, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api } from '../config/api';
 
 export default function ExpenseClaimModal({ isOpen, onClose, accounts = [], user, onClaimSubmitted, lightMode }) {
-  const [accountId, setAccountId] = useState(accounts[0]?.AccountId || '');
+  const [accountId, setAccountId] = useState('');
   const [expenseType, setExpenseType] = useState('Dev Hardware Equipment');
   const [amount, setAmount] = useState('350');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (accounts.length > 0 && !accountId) {
+      setAccountId(accounts[0]?.AccountId ?? accounts[0]?.accountId ?? '');
+    }
+  }, [accounts, isOpen]);
 
   if (!isOpen) return null;
 
@@ -102,9 +108,15 @@ export default function ExpenseClaimModal({ isOpen, onClose, accounts = [], user
               value={accountId}
               onChange={e => setAccountId(e.target.value)}
             >
-              {accounts.map(a => (
-                <option key={a.AccountId} value={a.AccountId}>{a.AccountName}</option>
-              ))}
+              {accounts.map(a => {
+                const id = a.AccountId ?? a.accountId;
+                const name = a.AccountName ?? a.accountName ?? `Account #${id}`;
+                return (
+                  <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                    {name}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -116,11 +128,11 @@ export default function ExpenseClaimModal({ isOpen, onClose, accounts = [], user
               value={expenseType}
               onChange={e => setExpenseType(e.target.value)}
             >
-              <option value="Dev Hardware Equipment">Dev Hardware Equipment</option>
-              <option value="Cloud AWS / Hosting Service">Cloud AWS / Hosting Service</option>
-              <option value="Software License / Tool">Software License / Tool</option>
-              <option value="Client Travel & Onsite Expense">Client Travel & Onsite Expense</option>
-              <option value="Certification & Training Fee">Certification & Training Fee</option>
+              <option value="Dev Hardware Equipment" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Dev Hardware Equipment</option>
+              <option value="Cloud AWS / Hosting Service" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Cloud AWS / Hosting Service</option>
+              <option value="Software License / Tool" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Software License / Tool</option>
+              <option value="Client Travel & Onsite Expense" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Client Travel & Onsite Expense</option>
+              <option value="Certification & Training Fee" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Certification & Training Fee</option>
             </select>
           </div>
 

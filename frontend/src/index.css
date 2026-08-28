@@ -145,7 +145,8 @@ body.light {
 }
 .gs-input::placeholder { color: var(--gs-text-muted); }
 .gs-input:focus { border-color: #0065FF; box-shadow: 0 0 0 3px rgba(0,82,204,0.15); }
-.gs-input option { background: #172B4D; color: white; }
+.gs-input option { background: #172B4D; color: #F4F5F7; }
+body.light .gs-input option { background: #FFFFFF; color: #091E42; }
 
 .gs-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gs-text-muted); margin-bottom: 6px; }
 

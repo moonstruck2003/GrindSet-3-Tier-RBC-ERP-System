@@ -1,16 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, X, ArrowRight, DollarSign, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api } from '../config/api';
 
 export default function FundReallocationModal({ isOpen, onClose, accounts = [], onReallocated, lightMode }) {
-  const [sourceAccountId, setSourceAccountId] = useState(accounts[0]?.AccountId || '');
-  const [targetAccountId, setTargetAccountId] = useState(accounts[1]?.AccountId || '');
+  const [sourceAccountId, setSourceAccountId] = useState('');
+  const [targetAccountId, setTargetAccountId] = useState('');
   const [amount, setAmount] = useState('5000');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    if (accounts.length > 0) {
+      const srcId = accounts[0]?.AccountId ?? accounts[0]?.accountId ?? '';
+      const tgtId = (accounts[1] ?? accounts[0])?.AccountId ?? (accounts[1] ?? accounts[0])?.accountId ?? '';
+      if (!sourceAccountId) setSourceAccountId(srcId);
+      if (!targetAccountId) setTargetAccountId(tgtId);
+    }
+  }, [accounts, isOpen]);
 
   if (!isOpen) return null;
 
@@ -110,11 +119,16 @@ export default function FundReallocationModal({ isOpen, onClose, accounts = [], 
               value={sourceAccountId}
               onChange={e => setSourceAccountId(e.target.value)}
             >
-              {accounts.map(a => (
-                <option key={a.AccountId} value={a.AccountId}>
-                  {a.AccountName} (Available: ${a.CurrentBalance?.toLocaleString()})
-                </option>
-              ))}
+              {accounts.map(a => {
+                const id = a.AccountId ?? a.accountId;
+                const name = a.AccountName ?? a.accountName ?? `Account #${id}`;
+                const bal = a.CurrentBalance ?? a.currentBalance ?? 0;
+                return (
+                  <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                    {name} (Available: ${Number(bal).toLocaleString()})
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -126,11 +140,16 @@ export default function FundReallocationModal({ isOpen, onClose, accounts = [], 
               value={targetAccountId}
               onChange={e => setTargetAccountId(e.target.value)}
             >
-              {accounts.map(a => (
-                <option key={a.AccountId} value={a.AccountId}>
-                  {a.AccountName} (Current: ${a.CurrentBalance?.toLocaleString()})
-                </option>
-              ))}
+              {accounts.map(a => {
+                const id = a.AccountId ?? a.accountId;
+                const name = a.AccountName ?? a.accountName ?? `Account #${id}`;
+                const bal = a.CurrentBalance ?? a.currentBalance ?? 0;
+                return (
+                  <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                    {name} (Current: ${Number(bal).toLocaleString()})
+                  </option>
+                );
+              })}
             </select>
           </div>
 
