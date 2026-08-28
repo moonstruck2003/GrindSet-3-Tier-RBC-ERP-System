@@ -2,10 +2,19 @@
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 async function apiFetch(path, opts = {}) {
+  const token = localStorage.getItem('grindset_token');
+  const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {};
+
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...opts.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...authHeader,
+      ...opts.headers
+    },
     ...opts,
   });
+
   if (!res.ok) {
     let msg = `API Error ${res.status}`;
     try {
@@ -33,7 +42,13 @@ export const api = {
   assignments:  () => apiFetch('/api/assignments'),
 
   signup:       (data) => apiFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
-  login:        (data) => apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+  login:        async (data) => {
+    const res = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify(data) });
+    if (res?.token) {
+      localStorage.setItem('grindset_token', res.token);
+    }
+    return res;
+  },
   me:           (userId) => apiFetch(`/api/auth/me?userId=${userId}`),
 
   companies:        () => apiFetch('/api/companies'),

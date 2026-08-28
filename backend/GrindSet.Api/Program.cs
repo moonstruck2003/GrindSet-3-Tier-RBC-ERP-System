@@ -1,6 +1,10 @@
 using GrindSet.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using GrindSet.Api.Models;
+using GrindSet.Api.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +16,27 @@ builder.Services.AddSwaggerGen();
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=grindset.db";
 builder.Services.AddDbContext<GrindSetDbContext>(options =>
     options.UseSqlite(connectionString));
+
+// Configure JWT Authentication
+var jwtKey = Encoding.UTF8.GetBytes(JwtTokenService.SecretKey);
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+}).AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = JwtTokenService.Issuer,
+        ValidAudience = JwtTokenService.Audience,
+        IssuerSigningKey = new SymmetricSecurityKey(jwtKey)
+    };
+});
+builder.Services.AddAuthorization();
 
 // Configure CORS for 3-member local WFH developer ports
 builder.Services.AddCors(options =>
@@ -39,6 +64,8 @@ if (app.Environment.IsDevelopment() || true)
 }
 
 app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Auto-migrate and seed database on startup
 using (var scope = app.Services.CreateScope())
@@ -434,7 +461,7 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
             isActive = user.IsActive,
             reportedNote = user.ReportedNote,
             fullName = displayName,
-            token = $"jwt_mock_{user.UserId}_{DateTime.UtcNow.Ticks}"
+            token = JwtTokenService.GenerateToken(user, displayName)
         }
     });
 });
@@ -476,10 +503,12 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
         if (adm != null) displayName = adm.FullName;
     }
 
+    var token = JwtTokenService.GenerateToken(user, displayName);
+
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
         UserId = user.UserId,
-        Action = "USER_LOGIN",
+        Action = "JWT_USER_LOGIN",
         TargetEntity = $"User:{user.Email}",
         EventTime = DateTime.UtcNow
     });
@@ -488,6 +517,9 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
     return Results.Ok(new
     {
         message = "Login successful",
+        token,
+        tokenType = "Bearer",
+        expiresInSeconds = 604800,
         user = new
         {
             userId = user.UserId,
@@ -497,7 +529,7 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
             isActive = user.IsActive,
             reportedNote = user.ReportedNote,
             fullName = displayName,
-            token = $"jwt_mock_{user.UserId}_{DateTime.UtcNow.Ticks}"
+            token = token
         }
     });
 });
@@ -1053,6 +1085,7 @@ public record EmployeeDto(string Email, string FullName, string Designation, dec
 public record TransactionDto(int AccountId, int LoggedByEmployeeId, string Type, decimal Amount);
 public record SignUpDto(string Email, string Password, string FullName, string Role, string? Designation, decimal HourlyRate, string? CompanyName, string? Industry);
 public record LoginDto(string Email, string Password);
+public record LoginRequestDto(string Email, string Password);
 public record ReportDto(string Note);
 public record ProjectCreateDto(int CompanyId, string ProjectName, decimal TotalBudget, string? Status, string? ScopeDescription, string? Objectives);
 public record TaskCreateDto(int ProjectId, int? AssigneeId, string Title, string? Description, string? Priority, string? Status, int StoryPoints);

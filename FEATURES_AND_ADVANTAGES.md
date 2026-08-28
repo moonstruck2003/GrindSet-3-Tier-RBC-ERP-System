@@ -189,10 +189,27 @@ Provides an omnipresent, role-specific notification drawer and top navigation un
 
 ---
 
+## 13. Cryptographic JWT Bearer Token Authentication (`JwtTokenService`)
+
+### What It Does
+Implements industry-standard cryptographic JSON Web Token (JWT) authentication across the ASP.NET Core API and React frontend:
+- **`JwtTokenService` Token Issuer**: Generates HMAC SHA-256 signed JWT tokens containing identity claims (`nameid`, `email`, `role`, `approvalStatus`, `isActive`).
+- **`POST /api/auth/login`**: Validates credentials and returns a 7-day signed JWT Bearer Token along with identity context.
+- **Frontend Interceptor (`apiFetch`)**: Automatically injects `Authorization: Bearer <jwt_token>` header into all outgoing HTTP requests across the application.
+- **ASP.NET Core Middleware (`JwtBearerDefaults`)**: Configured with `TokenValidationParameters` to validate issuer, audience, key signature, and token lifetime on incoming requests.
+
+### Enterprise Advantage
+- **Stateless Enterprise Security**: Eliminates server-side session state, enabling horizontal scalability across microservices and cloud instances.
+- **Cryptographic Tamper-Proof Claims**: Ensures user identity, tenant boundaries, and RBAC roles cannot be spoofed on the client.
+- **Standardized API Security**: Follows OAuth2 / OIDC Bearer token standards for easy third-party mobile or external integration.
+
+---
+
 ## 🛠️ Summary Architecture Matrix
 
 | Component / Module | Inspired By | Core Purpose | Enterprise Advantage |
 | :--- | :--- | :--- | :--- |
+| **JWT Bearer Auth** | OAuth2 / OIDC | Cryptographic token signing & Bearer headers | Stateless, tamper-proof enterprise security |
 | **3-Tier RBAC & Dashboards** | Jira / SAP | Role isolation (Admin, Company, Employee) | Zero cross-tenant data leakage |
 | **Pending Blur Overlay** | Atlassian | Locks unapproved signups behind modal | Prevents unauthorized tenant access |
 | **Project-Scoped Tasks** | Jira / Agile | Tasks bound to specific Projects | 100% budget & sprint accountability |
