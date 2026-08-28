@@ -55,6 +55,13 @@ export const api = {
 
   addEmployee: (data) => apiFetch('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
   addTransaction: (data) => apiFetch('/api/transactions', { method: 'POST', body: JSON.stringify(data) }),
+
+  createAccount:      (data) => apiFetch('/api/finance/accounts', { method: 'POST', body: JSON.stringify(data) }),
+  reallocateFunds:    (data) => apiFetch('/api/finance/reallocate', { method: 'POST', body: JSON.stringify(data) }),
+  submitExpenseClaim: (data) => apiFetch('/api/finance/expense-claim', { method: 'POST', body: JSON.stringify(data) }),
+  approveExpense:     (id) => apiFetch(`/api/finance/approve-expense/${id}`, { method: 'POST' }),
+  rejectExpense:      (id) => apiFetch(`/api/finance/reject-expense/${id}`, { method: 'POST' }),
+  exportCsvUrl:       () => `${API_BASE_URL}/api/finance/export/csv`,
 };
 
 // Legacy helpers kept for App.jsx compatibility

@@ -49,12 +49,28 @@ namespace GrindSet.Api.Data
                 context.ProjectScopes.Add(new ProjectScope { ProjectId = proj.ProjectId, ScopeDescription = "Full enterprise project management & financial logging system.", Objectives = "Deliver 3-tier RBAC, EF Core SQLite DB, and React dashboard." });
                 context.ProjectTimelines.Add(new ProjectTimeline { ProjectId = proj.ProjectId, PlannedStart = DateTime.UtcNow.AddDays(-30), PlannedEnd = DateTime.UtcNow.AddDays(90), Status = "On Track" });
 
-                // Seed Financial Account & Transaction
-                var finAcc = new FinancialAccount { ProjectId = proj.ProjectId, AccountName = "Engineering Operations", AllocatedBudget = 150000.00m, CurrentBalance = 112500.00m };
-                context.FinancialAccounts.Add(finAcc);
+                // Seed Multiple Financial Accounts
+                var finAcc1 = new FinancialAccount { ProjectId = proj.ProjectId, AccountName = "Engineering & Core Infrastructure", AllocatedBudget = 150000.00m, CurrentBalance = 112500.00m };
+                var finAcc2 = new FinancialAccount { ProjectId = proj.ProjectId, AccountName = "Cloud DevOps & AWS Services", AllocatedBudget = 60000.00m, CurrentBalance = 42000.00m };
+                var finAcc3 = new FinancialAccount { ProjectId = proj.ProjectId, AccountName = "R&D & Security Compliance Audit", AllocatedBudget = 40000.00m, CurrentBalance = 35000.00m };
+
+                context.FinancialAccounts.AddRange(finAcc1, finAcc2, finAcc3);
                 context.SaveChanges();
 
-                context.Transactions.Add(new Transaction { AccountId = finAcc.AccountId, LoggedByEmployeeId = emp1.EmployeeId, Type = "Infrastructure Cloud Expense", Amount = 4500.00m, TransactionDate = DateTime.UtcNow });
+                // Seed Transactions (Approved Expenses & Pending Employee Claims)
+                context.Transactions.AddRange(
+                    new Transaction { AccountId = finAcc1.AccountId, LoggedByEmployeeId = emp1.EmployeeId, Type = "Server Hardware Purchase", Amount = 12500.00m, Status = "Approved", Note = "Quarterly rack server upgrade", TransactionDate = DateTime.UtcNow.AddDays(-14) },
+                    new Transaction { AccountId = finAcc2.AccountId, LoggedByEmployeeId = emp1.EmployeeId, Type = "Cloud AWS Bill", Amount = 4500.00m, Status = "Approved", Note = "Monthly production cluster hosting", TransactionDate = DateTime.UtcNow.AddDays(-5) },
+                    new Transaction { AccountId = finAcc1.AccountId, LoggedByEmployeeId = emp2.EmployeeId, Type = "Developer Workstation Equipment", Amount = 2850.00m, Status = "PendingApproval", Note = "MacBook Pro M3 Pro reimbursement claim", TransactionDate = DateTime.UtcNow.AddDays(-1) },
+                    new Transaction { AccountId = finAcc3.AccountId, LoggedByEmployeeId = emp2.EmployeeId, Type = "Security Penetration Test Audit", Amount = 5000.00m, Status = "PendingApproval", Note = "SOC2 audit fee claim", TransactionDate = DateTime.UtcNow }
+                );
+
+                // Seed Inter-Account Fund Reallocation
+                context.FundReallocations.Add(new FundReallocation { ProjectId = proj.ProjectId, AccountId = finAcc1.AccountId, TargetAccountId = finAcc2.AccountId, Amount = 15000.00m, Reason = "Reallocate surplus hardware budget to AWS Cloud expansion", CreatedAt = DateTime.UtcNow.AddDays(-10) });
+
+                // Seed Budget Alert
+                context.BudgetAlerts.Add(new BudgetAlert { ProjectId = proj.ProjectId, AccountId = finAcc2.AccountId, AlertType = "80% Threshold Reached", ActualAmount = 18000.00m, Status = "Active" });
+
                 context.SecurityAuditLogs.Add(new SecurityAuditLog { UserId = adminUser.UserId, Action = "INITIALIZE_DATABASE", TargetEntity = "System", EventTime = DateTime.UtcNow });
 
                 // Seed Project-Bound Tasks

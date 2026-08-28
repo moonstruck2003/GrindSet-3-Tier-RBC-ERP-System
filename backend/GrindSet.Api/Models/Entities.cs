@@ -142,8 +142,10 @@ namespace GrindSet.Api.Models
         public int ReallocationId { get; set; }
         public int ProjectId { get; set; }
         public int AccountId { get; set; }
+        public int TargetAccountId { get; set; }
         public decimal Amount { get; set; }
         public string Reason { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
     public class ProjectScope
@@ -185,6 +187,8 @@ namespace GrindSet.Api.Models
         public int LoggedByEmployeeId { get; set; }
         public string Type { get; set; } = "Expense";
         public decimal Amount { get; set; }
+        public string Status { get; set; } = "Approved"; // Approved, PendingApproval, Rejected
+        public string? Note { get; set; }
         public DateTime TransactionDate { get; set; } = DateTime.UtcNow;
     }
 

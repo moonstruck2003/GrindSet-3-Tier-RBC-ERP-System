@@ -832,6 +832,190 @@ app.MapDelete("/api/tasks/{id:int}", async (GrindSetDbContext db, int id) =>
     return Results.Ok(new { message = "Task deleted successfully.", taskId = id });
 });
 
+// POST /api/finance/accounts - Create Financial Account
+app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, AccountCreateDto dto) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.AccountName))
+    {
+        return Results.BadRequest(new { message = "Account Name is required." });
+    }
+
+    var account = new FinancialAccount
+    {
+        ProjectId = dto.ProjectId > 0 ? dto.ProjectId : 1,
+        AccountName = dto.AccountName.Trim(),
+        AllocatedBudget = dto.AllocatedBudget > 0 ? dto.AllocatedBudget : 50000.00m,
+        CurrentBalance = dto.AllocatedBudget > 0 ? dto.AllocatedBudget : 50000.00m
+    };
+
+    db.FinancialAccounts.Add(account);
+    await db.SaveChangesAsync();
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = 1,
+        Action = "CREATE_FINANCIAL_ACCOUNT",
+        TargetEntity = $"Account:{account.AccountName} (${account.AllocatedBudget})",
+        EventTime = DateTime.UtcNow
+    });
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/api/finance/accounts/{account.AccountId}", account);
+});
+
+// POST /api/finance/reallocate - Inter-Account Budget Transfer
+app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, FundReallocateDto dto) =>
+{
+    if (dto.Amount <= 0) return Results.BadRequest(new { message = "Reallocation amount must be greater than zero." });
+    if (string.IsNullOrWhiteSpace(dto.Reason)) return Results.BadRequest(new { message = "Reason is required for audit reallocation." });
+
+    var source = await db.FinancialAccounts.FindAsync(dto.SourceAccountId);
+    var target = await db.FinancialAccounts.FindAsync(dto.TargetAccountId);
+
+    if (source == null || target == null)
+    {
+        return Results.BadRequest(new { message = "Source or target financial account not found." });
+    }
+
+    if (source.CurrentBalance < dto.Amount)
+    {
+        return Results.BadRequest(new { message = $"Insufficient liquidity in {source.AccountName}. Available: ${source.CurrentBalance}" });
+    }
+
+    source.CurrentBalance -= dto.Amount;
+    source.AllocatedBudget -= dto.Amount;
+    target.CurrentBalance += dto.Amount;
+    target.AllocatedBudget += dto.Amount;
+
+    var record = new FundReallocation
+    {
+        ProjectId = dto.ProjectId > 0 ? dto.ProjectId : source.ProjectId,
+        AccountId = source.AccountId,
+        TargetAccountId = target.AccountId,
+        Amount = dto.Amount,
+        Reason = dto.Reason.Trim(),
+        CreatedAt = DateTime.UtcNow
+    };
+
+    db.FundReallocations.Add(record);
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = 1,
+        Action = "REALLOCATE_FUNDS",
+        TargetEntity = $"From {source.AccountName} To {target.AccountName} (${dto.Amount})",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Funds reallocated successfully!", record });
+});
+
+// POST /api/finance/expense-claim - Employee Reimbursement Claim Submission
+app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ExpenseClaimDto dto) =>
+{
+    if (dto.Amount <= 0) return Results.BadRequest(new { message = "Claim amount must be greater than zero." });
+    if (string.IsNullOrWhiteSpace(dto.Type)) return Results.BadRequest(new { message = "Expense type is required." });
+
+    var account = await db.FinancialAccounts.FindAsync(dto.AccountId);
+    if (account == null) return Results.BadRequest(new { message = "Financial account not found." });
+
+    var tx = new Transaction
+    {
+        AccountId = dto.AccountId,
+        LoggedByEmployeeId = dto.EmployeeId > 0 ? dto.EmployeeId : 1,
+        Type = dto.Type.Trim(),
+        Amount = dto.Amount,
+        Status = "PendingApproval",
+        Note = dto.Note?.Trim() ?? "Employee reimbursement claim",
+        TransactionDate = DateTime.UtcNow
+    };
+
+    db.Transactions.Add(tx);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/api/transactions/{tx.TransactionId}", tx);
+});
+
+// POST /api/finance/approve-expense/{id} - Company Owner Approval
+app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db, int id) =>
+{
+    var tx = await db.Transactions.FindAsync(id);
+    if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
+
+    if (tx.Status == "Approved") return Results.Ok(new { message = "Expense is already approved." });
+
+    tx.Status = "Approved";
+
+    var account = await db.FinancialAccounts.FindAsync(tx.AccountId);
+    if (account != null)
+    {
+        account.CurrentBalance -= tx.Amount;
+    }
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = 1,
+        Action = "APPROVE_EXPENSE_CLAIM",
+        TargetEntity = $"Expense #{tx.TransactionId} (${tx.Amount})",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Expense claim approved successfully!", transaction = tx });
+});
+
+// POST /api/finance/reject-expense/{id} - Company Owner Rejection
+app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db, int id) =>
+{
+    var tx = await db.Transactions.FindAsync(id);
+    if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
+
+    tx.Status = "Rejected";
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = 1,
+        Action = "REJECT_EXPENSE_CLAIM",
+        TargetEntity = $"Expense #{tx.TransactionId} (${tx.Amount})",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Expense claim rejected.", transaction = tx });
+});
+
+// GET /api/finance/export/csv - Download General Ledger CSV Report
+app.MapGet("/api/finance/export/csv", async (GrindSetDbContext db) =>
+{
+    var txs = await (from t in db.Transactions
+                     join a in db.FinancialAccounts on t.AccountId equals a.AccountId
+                     join u in db.Users on t.LoggedByEmployeeId equals u.UserId into uGrp
+                     from u in uGrp.DefaultIfEmpty()
+                     join emp in db.Employees on u.UserId equals emp.EmployeeId into empGrp
+                     from emp in empGrp.DefaultIfEmpty()
+                     select new
+                     {
+                         t.TransactionId,
+                         Account = a.AccountName,
+                         LoggedBy = emp != null ? emp.FullName : (u != null ? u.Email : "System"),
+                         t.Type,
+                         t.Amount,
+                         t.Status,
+                         t.Note,
+                         t.TransactionDate
+                     }).ToListAsync();
+
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine("TransactionID,Account,LoggedBy,Type,Amount,Status,Note,TransactionDate");
+    foreach (var t in txs)
+    {
+        sb.AppendLine($"{t.TransactionId},\"{t.Account}\",\"{t.LoggedBy}\",\"{t.Type}\",{t.Amount},{t.Status},\"{t.Note}\",{t.TransactionDate:yyyy-MM-dd HH:mm:ss}");
+    }
+
+    return Results.Text(sb.ToString(), "text/csv");
+});
+
 app.Run();
 
 // Auth Helpers
@@ -858,5 +1042,8 @@ public record ReportDto(string Note);
 public record ProjectCreateDto(int CompanyId, string ProjectName, decimal TotalBudget, string? Status, string? ScopeDescription, string? Objectives);
 public record TaskCreateDto(int ProjectId, int? AssigneeId, string Title, string? Description, string? Priority, string? Status, int StoryPoints);
 public record TaskUpdateDto(int? ProjectId, int? AssigneeId, string? Title, string? Description, string? Priority, string? Status, int? StoryPoints);
+public record AccountCreateDto(int ProjectId, string AccountName, decimal AllocatedBudget);
+public record FundReallocateDto(int ProjectId, int SourceAccountId, int TargetAccountId, decimal Amount, string Reason);
+public record ExpenseClaimDto(int AccountId, int EmployeeId, string Type, decimal Amount, string? Note);
 
 

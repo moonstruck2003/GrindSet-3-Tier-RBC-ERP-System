@@ -1,267 +1,444 @@
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Coins, PlusCircle, ArrowDownLeft, X, Check, AlertTriangle, Wallet, TrendingDown } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+  DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
+  ShieldCheck, RefreshCw, Download, FileSpreadsheet, Plus, CheckCircle2,
+  XCircle, Clock, AlertTriangle, UserCheck, Layers, Coins, Calculator
+} from 'lucide-react';
 import { api } from '../config/api';
-import { useTheme } from '../config/theme';
-
-function BudgetBar({ pct, delay }) {
-  const over = pct > 85;
-  return (
-    <div style={{ height: 5, background: 'rgba(255,255,255,0.07)', borderRadius: 99, overflow: 'hidden' }}>
-      <motion.div
-        initial={{ width: 0 }} animate={{ width: `${Math.min(pct, 100)}%` }} transition={{ duration: 0.8, delay }}
-        style={{ height: '100%', borderRadius: 99,
-          background: over ? 'linear-gradient(90deg,#FF7452,#FF5630)' : 'linear-gradient(90deg,#BF9AFF88,#6554C0)' }}
-      />
-    </div>
-  );
-}
+import FundReallocationModal from '../components/FundReallocationModal';
+import ExpenseClaimModal from '../components/ExpenseClaimModal';
 
 export default function FinancePage({ lightMode }) {
-  const T = useTheme(lightMode);
-  const [accounts, setAccounts]   = useState([]);
-  const [txns, setTxns]           = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [showForm, setShowForm]   = useState(false);
-  const [saving, setSaving]       = useState(false);
-  const [toast, setToast]         = useState(null);
-  const [form, setForm]           = useState({ accountId:'', loggedByEmployeeId:'', type:'', amount:'' });
+  const [user, setUser] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  // Modals state
+  const [reallocModalOpen, setReallocModalOpen] = useState(false);
+  const [claimModalOpen, setClaimModalOpen] = useState(false);
+
+  // Timesheet calculator state (Employee)
+  const [weeklyHours, setWeeklyHours] = useState(40);
+  const [hourlyRate, setHourlyRate] = useState(85);
+
+  const loadFinanceData = async () => {
     setLoading(true);
-    Promise.all([api.accounts(), api.transactions(), api.employees()])
-      .then(([a,t,e]) => { setAccounts(a); setTxns(t); setEmployees(e); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); }, []);
-
-  const showToast = (msg, ok=true) => { setToast({msg,ok}); setTimeout(() => setToast(null), 3200); };
-
-  const handleLog = async (e) => {
-    e.preventDefault();
-    if (!form.accountId || !form.type || !form.amount) { showToast('Fill all required fields.', false); return; }
-    setSaving(true);
     try {
-      await api.addTransaction({ accountId:parseInt(form.accountId), loggedByEmployeeId:parseInt(form.loggedByEmployeeId)||1, type:form.type, amount:parseFloat(form.amount) });
-      setForm({ accountId:'', loggedByEmployeeId:'', type:'', amount:'' });
-      setShowForm(false);
-      showToast('Transaction logged!');
-      load();
-    } catch(err) {
-      showToast(`Error: ${err.message}`, false);
+      const [accRes, txRes] = await Promise.all([
+        api.accounts().catch(() => []),
+        api.transactions().catch(() => []),
+      ]);
+      setAccounts(accRes);
+      setTransactions(txRes);
+    } catch (err) {
+      console.error('Failed to load finance data:', err);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
-  const demoAccounts = [{ accountId:1, accountName:'Engineering Operations', allocatedBudget:150000, currentBalance:112500, projectId:1 }];
-  const demoTxns     = [{ transactionId:1, type:'Infrastructure Cloud Expense', amount:4500, loggedBy:'John Doe', transactionDate:new Date().toISOString(), accountName:'Engineering Operations' }];
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('grindset_user');
+      if (raw) setUser(JSON.parse(raw));
+    } catch {}
 
-  const accs  = accounts.length  ? accounts  : demoAccounts;
-  const tlist = txns.length      ? txns      : demoTxns;
+    loadFinanceData();
+  }, []);
 
-  const totalAllocated = accs.reduce((s,a) => s + Number(a.allocatedBudget||0), 0);
-  const totalBalance   = accs.reduce((s,a) => s + Number(a.currentBalance||0), 0);
-  const totalSpent     = totalAllocated - totalBalance;
+  const userRole = user?.role || 'Company';
+  const isCfoScope = userRole === 'Admin' || userRole === 'Company';
 
-  const inputStyle  = { width:'100%', padding:'9px 12px', borderRadius:8, border:`1px solid ${T.inputBdr}`, background:T.inputBg, color:T.inputClr, fontSize:13, fontFamily:'Inter,sans-serif', outline:'none', boxSizing:'border-box' };
-  const labelStyle  = { display:'block', fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.08em', color:T.textMut, marginBottom:6 };
+  // Handle Approvals / Rejections (CFO Scope)
+  const handleApproveExpense = async (txId) => {
+    try {
+      await api.approveExpense(txId);
+      loadFinanceData();
+    } catch (err) {
+      alert(err.message || 'Failed to approve expense.');
+    }
+  };
+
+  const handleRejectExpense = async (txId) => {
+    try {
+      await api.rejectExpense(txId);
+      loadFinanceData();
+    } catch (err) {
+      alert(err.message || 'Failed to reject expense.');
+    }
+  };
+
+  // Calculations
+  const totalAllocated = accounts.reduce((s, a) => s + Number(a.AllocatedBudget || a.allocatedBudget || 0), 0);
+  const totalBalance = accounts.reduce((s, a) => s + Number(a.CurrentBalance || a.currentBalance || 0), 0);
+  const approvedExpenses = transactions.filter(t => (t.Status || t.status) === 'Approved').reduce((s, t) => s + Number(t.Amount || t.amount || 0), 0);
+  const pendingClaims = transactions.filter(t => (t.Status || t.status) === 'PendingApproval');
+
+  // Employee calculated earnings
+  const monthlyEarnings = weeklyHours * hourlyRate * 4.33;
+
+  // Theme tokens
+  const textPri = lightMode ? '#091E42' : '#F4F5F7';
+  const textMut = lightMode ? '#5E6C84' : '#8993A4';
+  const cardBg = lightMode ? 'rgba(255,255,255,0.92)' : 'rgba(11,27,61,0.65)';
+  const border = lightMode ? '#DFE1E6' : 'rgba(255,255,255,0.08)';
+  const sectionBg = lightMode ? '#F4F5F7' : 'rgba(255,255,255,0.03)';
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
 
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div initial={{ opacity:0, y:-16, scale:0.92 }} animate={{ opacity:1, y:0, scale:1 }} exit={{ opacity:0, scale:0.92 }}
-            style={{ position:'fixed', top:20, right:20, zIndex:9999, display:'flex', alignItems:'center', gap:8,
-              padding:'11px 18px', borderRadius:12, boxShadow:'0 8px 32px rgba(0,0,0,0.35)',
-              background:toast.ok ? '#36B37E' : '#FF5630', color:'white', fontSize:13, fontWeight:600 }}>
-            {toast.ok ? <Check style={{width:15,height:15}} /> : <X style={{width:15,height:15}} />}
-            {toast.msg}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
-        <div>
-          <h2 style={{ fontSize:22, fontWeight:900, color:T.textPri, margin:0 }}>
-            Financial{' '}
-            <span style={{ background:'linear-gradient(135deg,#BF9AFF,#6554C0)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>Ledger</span>
-          </h2>
-          <p style={{ fontSize:13, color:T.textMut, marginTop:4 }}>{accs.length} account{accs.length!==1?'s':''} · {tlist.length} transactions</p>
-        </div>
-        <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
-          onClick={() => setShowForm(true)}
-          style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 18px', borderRadius:11,
-            background:'linear-gradient(135deg,#0065FF,#0052CC)', color:'white', fontWeight:700,
-            fontSize:13, border:'none', cursor:'pointer', boxShadow:'0 4px 14px rgba(0,82,204,0.35)' }}>
-          <PlusCircle style={{width:15,height:15}} /> Log Expense
-        </motion.button>
-      </div>
-
-      {/* KPI row */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:14 }}>
-        {[
-          { label:'Total Allocated', value:`$${totalAllocated.toLocaleString()}`, color:'#4C9AFF', icon:Wallet },
-          { label:'Total Spent',     value:`$${totalSpent.toLocaleString()}`,     color:'#FF8F73', icon:TrendingDown },
-          { label:'Remaining',       value:`$${totalBalance.toLocaleString()}`,   color:'#57D9A3', icon:Coins },
-        ].map((k,i) => (
-          <motion.div key={i} initial={{ opacity:0, y:14 }} animate={{ opacity:1, y:0 }} transition={{ delay:i*0.06 }}
-            style={{ background:T.cardBg, border:`1px solid ${T.cardBdr}`, borderLeft:`3px solid ${k.color}`,
-              borderRadius:14, padding:'16px 18px', display:'flex', alignItems:'center', gap:14, backdropFilter:'blur(12px)' }}>
-            <div style={{ width:38, height:38, borderRadius:10, background:`${k.color}15`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <k.icon style={{ width:18, height:18, color:k.color }} />
+      {/* Header Banner */}
+      <div className="glass" style={{ padding: '24px 30px', borderRadius: 20, background: 'linear-gradient(135deg, rgba(0,82,204,0.18), rgba(101,84,192,0.18))', border: `1px solid ${border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #0052CC, #6554C0)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(0,82,204,0.3)' }}>
+              <Coins style={{ width: 24, height: 24, color: 'white' }} />
             </div>
             <div>
-              <p style={{ fontSize:20, fontWeight:900, color:k.color, margin:0, fontFamily:'JetBrains Mono,monospace' }}>{k.value}</p>
-              <p style={{ fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.07em', color:T.textMut, margin:0 }}>{k.label}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <h1 style={{ fontSize: 22, fontWeight: 800, color: textPri, margin: 0 }}>
+                  General Ledger & Finance Hub
+                </h1>
+                <span className={`pill ${isCfoScope ? 'pill-blue' : 'pill-green'}`}>
+                  {isCfoScope ? 'CFO Controller Scope' : 'Employee Timesheet & Claims'}
+                </span>
+              </div>
+              <p style={{ fontSize: 13, color: textMut, margin: 0, marginTop: 4 }}>
+                Enterprise Financial Subsystem &nbsp;·&nbsp; GAAP Accounting Ledger &nbsp;·&nbsp; Expense Management
+              </p>
             </div>
-          </motion.div>
-        ))}
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <a
+              href={api.exportCsvUrl()}
+              target="_blank"
+              rel="noreferrer"
+              style={{ textDecoration: 'none' }}
+            >
+              <button className="btn-ghost" style={{ padding: '9px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Download style={{ width: 14, height: 14 }} /> Download CSV Ledger
+              </button>
+            </a>
+
+            {isCfoScope && (
+              <button
+                onClick={() => setReallocModalOpen(true)}
+                className="btn-primary"
+                style={{ padding: '9px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, background: '#6554C0', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <RefreshCw style={{ width: 14, height: 14 }} /> Reallocate Budget
+              </button>
+            )}
+
+            <button
+              onClick={() => setClaimModalOpen(true)}
+              className="btn-primary"
+              style={{ padding: '9px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Plus style={{ width: 14, height: 14 }} /> Submit Expense Claim
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Accounts + Transactions */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:16 }}>
+      {/* KPI Financial Overview Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#57D9A3', letterSpacing: '0.06em' }}>Total Allocated Budget</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>${totalAllocated.toLocaleString()}</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Across {accounts.length} Operating Accounts</div>
+        </motion.div>
 
-        {/* Accounts */}
-        <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.2 }}
-          style={{ background:T.cardBg, border:`1px solid ${T.cardBdr}`, borderRadius:16, overflow:'hidden', backdropFilter:'blur(12px)' }}>
-          <div style={{ padding:'15px 20px', borderBottom:`1px solid ${T.divider}` }}>
-            <p style={{ fontSize:13, fontWeight:700, color:T.textPri, margin:0 }}>Financial Accounts</p>
-          </div>
-          {loading
-            ? <div style={{ padding:20, display:'flex', flexDirection:'column', gap:12 }}>
-                {[1,2].map(i => <div key={i} style={{ height:72, borderRadius:10, background:T.shimmer, backgroundSize:'200% 100%', animation:'shimmer 1.5s infinite' }} />)}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#4C9AFF', letterSpacing: '0.06em' }}>Current Liquidity Balance</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>${totalBalance.toLocaleString()}</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Available Liquid Funds</div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#BF9AFF', letterSpacing: '0.06em' }}>Total Approved Expenses</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>${approvedExpenses.toLocaleString()}</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Cleared Transactions</div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#FFAB00', letterSpacing: '0.06em' }}>Pending Claims Queue</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>{pendingClaims.length}</div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Reimbursement Claims</div>
+        </motion.div>
+      </div>
+
+      {/* ── PERSPECTIVE 1: CFO / COMPANY OWNER WORKSPACE ── */}
+      {isCfoScope && (
+        <>
+          {/* Financial Accounts & Operating Budgets */}
+          <div className="glass" style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Layers style={{ width: 20, height: 20, color: '#4C9AFF' }} />
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>Project Financial Accounts & Liquidity</h2>
               </div>
-            : accs.map((acc,i) => {
-                const pct = (1 - Number(acc.currentBalance) / Number(acc.allocatedBudget)) * 100;
+              <button onClick={() => setReallocModalOpen(true)} className="btn-ghost" style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700 }}>
+                Reallocate Funds
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+              {accounts.map(acc => {
+                const allocated = Number(acc.AllocatedBudget || acc.allocatedBudget || 1);
+                const balance = Number(acc.CurrentBalance || acc.currentBalance || 0);
+                const pct = Math.max(0, Math.min(100, Math.round((balance / allocated) * 100)));
+                const isOverrun = pct < 20;
+
                 return (
-                  <motion.div key={acc.accountId} initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ delay:i*0.08 }}
-                    style={{ padding:'16px 20px', borderBottom:`1px solid ${T.divider}` }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-                      <div>
-                        <p style={{ fontWeight:700, fontSize:13, color:T.textPri, margin:'0 0 3px' }}>{acc.accountName}</p>
-                        <p style={{ fontSize:11, color:T.textMut, margin:0 }}>Project #{acc.projectId}</p>
-                      </div>
-                      <div style={{ textAlign:'right' }}>
-                        <p style={{ fontWeight:800, fontSize:14, color: pct>85 ? '#FF8F73' : '#57D9A3', margin:'0 0 2px', fontFamily:'JetBrains Mono,monospace' }}>
-                          ${Number(acc.currentBalance).toLocaleString()}
-                        </p>
-                        <p style={{ fontSize:10, color:T.textMut, margin:0 }}>of ${Number(acc.allocatedBudget).toLocaleString()}</p>
-                      </div>
+                  <div key={acc.AccountId || acc.accountId} style={{ padding: 18, borderRadius: 14, background: sectionBg, border: `1px solid ${isOverrun ? 'rgba(255,86,48,0.4)' : border}` }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: textPri }}>{acc.AccountName || acc.accountName}</div>
+                      {isOverrun && (
+                        <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,86,48,0.15)', color: '#FF8F73', border: '1px solid rgba(255,86,48,0.3)' }}>
+                          Low Liquidity
+                        </span>
+                      )}
                     </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <div style={{ flex:1 }}><BudgetBar pct={pct} delay={i*0.08} /></div>
-                      <span style={{ fontSize:10, fontWeight:800, color: pct>85 ? '#FF8F73' : '#BF9AFF', fontFamily:'JetBrains Mono,monospace', flexShrink:0 }}>
-                        {pct.toFixed(0)}%
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: textMut, marginBottom: 6 }}>
+                      <span>Liquidity Balance</span>
+                      <span style={{ fontWeight: 800, color: isOverrun ? '#FF8F73' : '#57D9A3', fontFamily: 'JetBrains Mono, monospace' }}>
+                        ${balance.toLocaleString()} / ${allocated.toLocaleString()}
                       </span>
                     </div>
-                    {pct > 80 && (
-                      <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:8, fontSize:11, fontWeight:600, color:'#FF8F73' }}>
-                        <AlertTriangle style={{width:12,height:12}} /> Budget overrun risk
-                      </div>
-                    )}
-                  </motion.div>
-                );
-              })
-          }
-        </motion.div>
 
-        {/* Transactions */}
-        <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.25 }}
-          style={{ background:T.cardBg, border:`1px solid ${T.cardBdr}`, borderRadius:16, overflow:'hidden', backdropFilter:'blur(12px)' }}>
-          <div style={{ padding:'15px 20px', borderBottom:`1px solid ${T.divider}` }}>
-            <p style={{ fontSize:13, fontWeight:700, color:T.textPri, margin:0 }}>Transaction Ledger</p>
-          </div>
-          <div style={{ overflowY:'auto', maxHeight:340 }}>
-            {loading
-              ? <div style={{ padding:20, display:'flex', flexDirection:'column', gap:10 }}>
-                  {[1,2,3].map(i => <div key={i} style={{ height:48, borderRadius:8, background:T.shimmer, backgroundSize:'200% 100%', animation:'shimmer 1.5s infinite' }} />)}
-                </div>
-              : tlist.map((t,i) => (
-                  <motion.div key={t.transactionId}
-                    initial={{ opacity:0, x:-8 }} animate={{ opacity:1, x:0 }} transition={{ delay:i*0.04 }}
-                    style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 20px', borderBottom:`1px solid ${T.divider}`,
-                      transition:'background 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = T.rowHover}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <div style={{ width:32, height:32, borderRadius:'50%', background:'rgba(255,86,48,0.12)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      <ArrowDownLeft style={{ width:15, height:15, color:'#FF8F73' }} />
+                    {/* Progress Bar */}
+                    <div style={{ height: 6, borderRadius: 99, background: lightMode ? '#DFE1E6' : 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: isOverrun ? 'linear-gradient(90deg, #FF8F73, #FF5630)' : 'linear-gradient(90deg, #0052CC, #36B37E)', transition: 'width 0.5s' }} />
                     </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ fontSize:12, fontWeight:600, color:T.textPri, margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.type}</p>
-                      <p style={{ fontSize:10, color:T.textMut, margin:0 }}>{t.loggedBy||'System'} · {new Date(t.transactionDate).toLocaleDateString()}</p>
-                    </div>
-                    <p style={{ fontWeight:800, color:'#FF8F73', fontSize:13, margin:0, flexShrink:0, fontFamily:'JetBrains Mono,monospace' }}>
-                      -${Number(t.amount).toLocaleString()}
-                    </p>
-                  </motion.div>
-                ))
-            }
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Log Expense Modal */}
-      <AnimatePresence>
-        {showForm && (
-          <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:16, background:'rgba(0,0,0,0.65)', backdropFilter:'blur(6px)' }}>
-            <motion.div initial={{ scale:0.93, opacity:0 }} animate={{ scale:1, opacity:1 }} exit={{ scale:0.93, opacity:0 }}
-              style={{ width:'100%', maxWidth:420, borderRadius:20, overflow:'hidden',
-                background: lightMode ? '#FFFFFF' : '#0B1B3D', border:`1px solid ${T.cardBdr}`, boxShadow:'0 24px 80px rgba(0,0,0,0.5)' }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 22px', borderBottom:`1px solid ${T.divider}` }}>
-                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                  <div style={{ width:30, height:30, borderRadius:8, background:'rgba(191,154,255,0.15)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <Coins style={{ width:15, height:15, color:'#BF9AFF' }} />
                   </div>
-                  <h3 style={{ fontWeight:800, fontSize:15, color:T.textPri, margin:0 }}>Log Expense</h3>
-                </div>
-                <button onClick={() => setShowForm(false)} style={{ padding:6, borderRadius:8, background:'transparent', border:'none', cursor:'pointer', color:T.textMut }}>
-                  <X style={{width:16,height:16}} />
-                </button>
-              </div>
-              <form onSubmit={handleLog} style={{ padding:22, display:'flex', flexDirection:'column', gap:14 }}>
-                <div>
-                  <label style={labelStyle}>Account</label>
-                  <select style={inputStyle} value={form.accountId} onChange={e => setForm(f=>({...f,accountId:e.target.value}))}>
-                    <option value="">Select account…</option>
-                    {accs.map(a => <option key={a.accountId} value={a.accountId}>{a.accountName}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Logged By</label>
-                  <select style={inputStyle} value={form.loggedByEmployeeId} onChange={e => setForm(f=>({...f,loggedByEmployeeId:e.target.value}))}>
-                    <option value="">Select employee…</option>
-                    {employees.map(e => <option key={e.employeeId} value={e.employeeId}>{e.fullName}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Expense Description</label>
-                  <input style={inputStyle} placeholder="e.g. Cloud Infrastructure" value={form.type} onChange={e => setForm(f=>({...f,type:e.target.value}))} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Amount (USD)</label>
-                  <input style={inputStyle} type="number" min="0.01" step="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm(f=>({...f,amount:e.target.value}))} />
-                </div>
-                <div style={{ display:'flex', gap:10, paddingTop:4 }}>
-                  <button type="button" onClick={() => setShowForm(false)}
-                    style={{ flex:1, padding:'10px', borderRadius:10, background:'transparent', border:`1px solid ${T.cardBdr}`, color:T.textMut, fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:'Inter,sans-serif' }}>
-                    Cancel
-                  </button>
-                  <button type="submit" disabled={saving}
-                    style={{ flex:1, padding:'10px', borderRadius:10, background:'linear-gradient(135deg,#0065FF,#0052CC)', color:'white', fontWeight:700, fontSize:13, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontFamily:'Inter,sans-serif' }}>
-                    {saving ? <><span style={{ width:14, height:14, border:'2px solid rgba(255,255,255,0.3)', borderTopColor:'white', borderRadius:'50%', animation:'spin 0.7s linear infinite', display:'inline-block' }} /> Saving…</> : 'Log Expense'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </AnimatePresence>
+
+          {/* Pending Expense Claims Approval Queue */}
+          {pendingClaims.length > 0 && (
+            <div className="glass" style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <Clock style={{ width: 20, height: 20, color: '#FFAB00' }} />
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>Pending Employee Expense Claims Queue ({pendingClaims.length})</h2>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table className="gs-table">
+                  <thead>
+                    <tr>
+                      <th>Claim ID</th>
+                      <th>Expense Category</th>
+                      <th>Logged By</th>
+                      <th>Claim Note</th>
+                      <th>Amount</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingClaims.map(t => (
+                      <tr key={t.TransactionId || t.transactionId}>
+                        <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: '#4C9AFF' }}>#EXP-{t.TransactionId || t.transactionId}</td>
+                        <td style={{ fontWeight: 700, color: textPri }}>{t.Type || t.type}</td>
+                        <td>{t.LoggedBy || 'Employee Specialist'}</td>
+                        <td style={{ fontSize: 12, color: textMut }}>{t.Note || t.note || 'Operational expense claim'}</td>
+                        <td style={{ fontWeight: 800, color: '#FFDA75', fontFamily: 'JetBrains Mono, monospace' }}>${Number(t.Amount || t.amount).toLocaleString()}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => handleApproveExpense(t.TransactionId || t.transactionId)}
+                              style={{ padding: '5px 12px', borderRadius: 8, background: '#36B37E', color: 'white', fontWeight: 700, fontSize: 11, border: 'none', cursor: 'pointer' }}
+                            >
+                              Approve Claim
+                            </button>
+                            <button
+                              onClick={() => handleRejectExpense(t.TransactionId || t.transactionId)}
+                              style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(255,86,48,0.15)', border: '1px solid rgba(255,86,48,0.3)', color: '#FF8F73', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* General Ledger Transactions Audit Table */}
+          <div className="glass" style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <FileSpreadsheet style={{ width: 20, height: 20, color: '#57D9A3' }} />
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>General Ledger Transactions Log</h2>
+              </div>
+              <span style={{ fontSize: 11, color: textMut }}>{transactions.length} Total Ledger Entries</span>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table className="gs-table">
+                <thead>
+                  <tr>
+                    <th>TX ID</th>
+                    <th>Account</th>
+                    <th>Category / Type</th>
+                    <th>Logged By</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map(t => {
+                    const st = t.Status || t.status || 'Approved';
+                    return (
+                      <tr key={t.TransactionId || t.transactionId}>
+                        <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: textMut }}>#{t.TransactionId || t.transactionId}</td>
+                        <td style={{ fontWeight: 700, color: textPri }}>{t.AccountName || t.Account || 'Core Account'}</td>
+                        <td>{t.Type || t.type}</td>
+                        <td>{t.LoggedBy || 'System'}</td>
+                        <td style={{ fontWeight: 800, color: '#57D9A3', fontFamily: 'JetBrains Mono, monospace' }}>${Number(t.Amount || t.amount).toLocaleString()}</td>
+                        <td>
+                          <span className={`pill ${st === 'Approved' ? 'pill-green' : st === 'PendingApproval' ? 'pill-gold' : 'pill-red'}`}>
+                            {st}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11, color: textMut }}>{new Date(t.TransactionDate || t.transactionDate || Date.now()).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── PERSPECTIVE 2: EMPLOYEE TIMESHEET & CLAIMS WORKSPACE ── */}
+      {!isCfoScope && (
+        <>
+          {/* Hourly Billing Timesheet Calculator */}
+          <div className="glass" style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+              <Calculator style={{ width: 20, height: 20, color: '#57D9A3' }} />
+              <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>My Hourly Timesheet & Billable Earnings Calculator</h2>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+              <div style={{ padding: 18, borderRadius: 14, background: sectionBg, border: `1px solid ${border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div>
+                  <label className="gs-label" style={{ color: textMut }}>Hourly Billing Rate ($/hr)</label>
+                  <input
+                    type="number"
+                    className="gs-input"
+                    value={hourlyRate}
+                    onChange={e => setHourlyRate(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: textMut, marginBottom: 4 }}>
+                    <span>Weekly Billable Hours</span>
+                    <span style={{ fontWeight: 800, color: textPri }}>{weeklyHours} hrs / week</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10" max="60" step="1"
+                    style={{ width: '100%', accentColor: '#0052CC' }}
+                    value={weeklyHours}
+                    onChange={e => setWeeklyHours(parseInt(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div style={{ padding: 20, borderRadius: 14, background: 'linear-gradient(135deg, rgba(54,179,126,0.15), rgba(0,82,204,0.15))', border: '1px solid rgba(54,179,126,0.3)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#57D9A3', letterSpacing: '0.06em' }}>Estimated Gross Monthly Earnings</div>
+                <div style={{ fontSize: 34, fontWeight: 900, color: textPri, marginTop: 8, fontFamily: 'JetBrains Mono, monospace' }}>
+                  ${monthlyEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div style={{ fontSize: 11, color: textMut, marginTop: 6 }}>
+                  Based on {weeklyHours * 4.33} monthly billable hours @ ${hourlyRate}/hr
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Employee Reimbursement Claims Tracker */}
+          <div className="glass" style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Coins style={{ width: 20, height: 20, color: '#4C9AFF' }} />
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>My Reimbursement Expense Claims</h2>
+              </div>
+              <button onClick={() => setClaimModalOpen(true)} className="btn-primary" style={{ padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                + Submit New Claim
+              </button>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table className="gs-table">
+                <thead>
+                  <tr>
+                    <th>Claim ID</th>
+                    <th>Category</th>
+                    <th>Claim Description</th>
+                    <th>Amount</th>
+                    <th>Approval Status</th>
+                    <th>Submission Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map(t => {
+                    const st = t.Status || t.status || 'Approved';
+                    return (
+                      <tr key={t.TransactionId || t.transactionId}>
+                        <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: textMut }}>#EXP-{t.TransactionId || t.transactionId}</td>
+                        <td style={{ fontWeight: 700, color: textPri }}>{t.Type || t.type}</td>
+                        <td style={{ fontSize: 12, color: textMut }}>{t.Note || t.note || 'Reimbursement claim'}</td>
+                        <td style={{ fontWeight: 800, color: '#57D9A3', fontFamily: 'JetBrains Mono, monospace' }}>${Number(t.Amount || t.amount).toLocaleString()}</td>
+                        <td>
+                          <span className={`pill ${st === 'Approved' ? 'pill-green' : st === 'PendingApproval' ? 'pill-gold' : 'pill-red'}`}>
+                            {st}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11, color: textMut }}>{new Date(t.TransactionDate || t.transactionDate || Date.now()).toLocaleDateString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Render Modals */}
+      <FundReallocationModal
+        isOpen={reallocModalOpen}
+        onClose={() => setReallocModalOpen(false)}
+        accounts={accounts}
+        onReallocated={loadFinanceData}
+        lightMode={lightMode}
+      />
+
+      <ExpenseClaimModal
+        isOpen={claimModalOpen}
+        onClose={() => setClaimModalOpen(false)}
+        accounts={accounts}
+        user={user}
+        onClaimSubmitted={loadFinanceData}
+        lightMode={lightMode}
+      />
+
     </div>
   );
 }
