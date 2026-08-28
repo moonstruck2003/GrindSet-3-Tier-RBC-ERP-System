@@ -57,6 +57,14 @@ namespace GrindSet.Api.Data
                 context.Transactions.Add(new Transaction { AccountId = finAcc.AccountId, LoggedByEmployeeId = emp1.EmployeeId, Type = "Infrastructure Cloud Expense", Amount = 4500.00m, TransactionDate = DateTime.UtcNow });
                 context.SecurityAuditLogs.Add(new SecurityAuditLog { UserId = adminUser.UserId, Action = "INITIALIZE_DATABASE", TargetEntity = "System", EventTime = DateTime.UtcNow });
 
+                // Seed Project-Bound Tasks
+                context.Tasks.AddRange(
+                    new TaskItem { ProjectId = proj.ProjectId, AssigneeId = empUser1.UserId, Title = "Implement RBAC Workflows & Role Guards", Description = "Enforce 3-tier RBAC protection across all endpoints & pages.", Priority = "High", Status = "In Progress", StoryPoints = 5 },
+                    new TaskItem { ProjectId = proj.ProjectId, AssigneeId = empUser1.UserId, Title = "Configure SQLite EF Core Task Entity", Description = "Add TaskItem model with FK to ProjectId.", Priority = "Highest", Status = "Done", StoryPoints = 3 },
+                    new TaskItem { ProjectId = proj.ProjectId, AssigneeId = empUser2.UserId, Title = "Design Command Palette Ctrl+K Modal", Description = "Spotlight search modal for instant navigation.", Priority = "High", Status = "To Do", StoryPoints = 3 },
+                    new TaskItem { ProjectId = proj.ProjectId, AssigneeId = empUser2.UserId, Title = "Audit Financial Ledger Exports", Description = "PDF and CSV exports for quarterly P&L statement.", Priority = "Medium", Status = "To Do", StoryPoints = 2 }
+                );
+
                 context.SaveChanges();
             }
         }

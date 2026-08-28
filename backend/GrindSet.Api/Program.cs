@@ -676,6 +676,162 @@ app.MapGet("/api/companies", async (GrindSetDbContext db) =>
     return Results.Ok(companies);
 });
 
+// POST /api/projects - Create new project
+app.MapPost("/api/projects", async (GrindSetDbContext db, ProjectCreateDto dto) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.ProjectName))
+    {
+        return Results.BadRequest(new { message = "Project Name is required." });
+    }
+
+    var project = new Project
+    {
+        CompanyId = dto.CompanyId > 0 ? dto.CompanyId : 1,
+        ProjectName = dto.ProjectName.Trim(),
+        Status = string.IsNullOrWhiteSpace(dto.Status) ? "In Progress" : dto.Status.Trim(),
+        TotalBudget = dto.TotalBudget > 0 ? dto.TotalBudget : 100000.00m
+    };
+
+    db.Projects.Add(project);
+    await db.SaveChangesAsync();
+
+    // Create Scope
+    db.ProjectScopes.Add(new ProjectScope
+    {
+        ProjectId = project.ProjectId,
+        ScopeDescription = dto.ScopeDescription ?? "New enterprise project scope.",
+        Objectives = dto.Objectives ?? "Deliver project milestones on schedule."
+    });
+
+    // Create Timeline
+    db.ProjectTimelines.Add(new ProjectTimeline
+    {
+        ProjectId = project.ProjectId,
+        PlannedStart = DateTime.UtcNow,
+        PlannedEnd = DateTime.UtcNow.AddDays(90),
+        Status = "On Track"
+    });
+
+    // Create Financial Account
+    db.FinancialAccounts.Add(new FinancialAccount
+    {
+        ProjectId = project.ProjectId,
+        AccountName = $"{project.ProjectName} Operating Budget",
+        AllocatedBudget = project.TotalBudget,
+        CurrentBalance = project.TotalBudget
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/projects/{project.ProjectId}", project);
+});
+
+// GET /api/tasks - Get all tasks with project and assignee info
+app.MapGet("/api/tasks", async (GrindSetDbContext db) =>
+{
+    var tasks = await (from t in db.Tasks
+                       join p in db.Projects on t.ProjectId equals p.ProjectId
+                       join u in db.Users on t.AssigneeId equals u.UserId into uGroup
+                       from u in uGroup.DefaultIfEmpty()
+                       join emp in db.Employees on u.UserId equals emp.EmployeeId into empGroup
+                       from emp in empGroup.DefaultIfEmpty()
+                       select new
+                       {
+                           t.TaskId,
+                           t.ProjectId,
+                           ProjectName = p.ProjectName,
+                           t.AssigneeId,
+                           AssigneeName = emp != null ? emp.FullName : (u != null ? u.Email : "Unassigned"),
+                           t.Title,
+                           t.Description,
+                           t.Priority,
+                           t.Status,
+                           t.StoryPoints,
+                           t.CreatedAt
+                       }).OrderByDescending(t => t.CreatedAt).ToListAsync();
+    return Results.Ok(tasks);
+});
+
+// POST /api/tasks - Create new task (STRICT REQUIREMENT: MUST BE SCOPED TO SPECIFIC PROJECT)
+app.MapPost("/api/tasks", async (GrindSetDbContext db, TaskCreateDto dto) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.Title))
+    {
+        return Results.BadRequest(new { message = "Task Title is required." });
+    }
+
+    var project = await db.Projects.FindAsync(dto.ProjectId);
+    if (project == null)
+    {
+        return Results.BadRequest(new { message = "Invalid Project ID. Every task must be bound to a specific project." });
+    }
+
+    var task = new TaskItem
+    {
+        ProjectId = dto.ProjectId,
+        AssigneeId = dto.AssigneeId,
+        Title = dto.Title.Trim(),
+        Description = dto.Description?.Trim() ?? string.Empty,
+        Priority = string.IsNullOrWhiteSpace(dto.Priority) ? "Medium" : dto.Priority.Trim(),
+        Status = string.IsNullOrWhiteSpace(dto.Status) ? "To Do" : dto.Status.Trim(),
+        StoryPoints = dto.StoryPoints > 0 ? dto.StoryPoints : 3,
+        CreatedAt = DateTime.UtcNow
+    };
+
+    db.Tasks.Add(task);
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = dto.AssigneeId ?? 1,
+        Action = "CREATE_TASK",
+        TargetEntity = $"Task:{task.Title} (Project:{project.ProjectName})",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/tasks/{task.TaskId}", new
+    {
+        task.TaskId,
+        task.ProjectId,
+        ProjectName = project.ProjectName,
+        task.AssigneeId,
+        task.Title,
+        task.Description,
+        task.Priority,
+        task.Status,
+        task.StoryPoints,
+        task.CreatedAt
+    });
+});
+
+// PUT /api/tasks/{id} - Update task details, status, priority, assignee
+app.MapPut("/api/tasks/{id:int}", async (GrindSetDbContext db, int id, TaskUpdateDto dto) =>
+{
+    var task = await db.Tasks.FindAsync(id);
+    if (task == null) return Results.NotFound(new { message = "Task not found." });
+
+    if (!string.IsNullOrWhiteSpace(dto.Title)) task.Title = dto.Title.Trim();
+    if (dto.Description != null) task.Description = dto.Description.Trim();
+    if (!string.IsNullOrWhiteSpace(dto.Priority)) task.Priority = dto.Priority.Trim();
+    if (!string.IsNullOrWhiteSpace(dto.Status)) task.Status = dto.Status.Trim();
+    if (dto.AssigneeId.HasValue) task.AssigneeId = dto.AssigneeId.Value;
+    if (dto.StoryPoints.HasValue && dto.StoryPoints.Value > 0) task.StoryPoints = dto.StoryPoints.Value;
+    if (dto.ProjectId.HasValue && dto.ProjectId.Value > 0) task.ProjectId = dto.ProjectId.Value;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(task);
+});
+
+// DELETE /api/tasks/{id} - Delete task
+app.MapDelete("/api/tasks/{id:int}", async (GrindSetDbContext db, int id) =>
+{
+    var task = await db.Tasks.FindAsync(id);
+    if (task == null) return Results.NotFound(new { message = "Task not found." });
+
+    db.Tasks.Remove(task);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = "Task deleted successfully.", taskId = id });
+});
+
 app.Run();
 
 // Auth Helpers
@@ -699,5 +855,8 @@ public record TransactionDto(int AccountId, int LoggedByEmployeeId, string Type,
 public record SignUpDto(string Email, string Password, string FullName, string Role, string? Designation, decimal HourlyRate, string? CompanyName, string? Industry);
 public record LoginDto(string Email, string Password);
 public record ReportDto(string Note);
+public record ProjectCreateDto(int CompanyId, string ProjectName, decimal TotalBudget, string? Status, string? ScopeDescription, string? Objectives);
+public record TaskCreateDto(int ProjectId, int? AssigneeId, string Title, string? Description, string? Priority, string? Status, int StoryPoints);
+public record TaskUpdateDto(int? ProjectId, int? AssigneeId, string? Title, string? Description, string? Priority, string? Status, int? StoryPoints);
 
 

@@ -3,11 +3,14 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, FolderKanban, Coins, ShieldAlert,
-  Sun, Moon, LogOut, ChevronRight, Activity, Building2, Shield, UserCheck
+  Sun, Moon, LogOut, ChevronRight, Activity, Building2, Shield, UserCheck, Plus, Search, Bell, Command
 } from 'lucide-react';
 import { api } from '../config/api';
 import GrindsetLogoNodes from './GrindsetLogoNodes';
 import ApprovalPendingOverlay from './ApprovalPendingOverlay';
+import CommandPaletteModal from './CommandPaletteModal';
+import GlobalCreateModal from './GlobalCreateModal';
+import NotificationsDrawer from './NotificationsDrawer';
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 function theme(light) {
@@ -44,6 +47,13 @@ export default function AppShell({ children, lightMode, setLightMode }) {
   const [apiStatus, setApiStatus] = useState('...');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Top-Tier Enterprise Drawers & Modals
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createTab, setCreateTab] = useState('task');
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifCount, setNotifCount] = useState(2);
 
   const location = useLocation();
   const isLanding = location.pathname === '/';
@@ -271,15 +281,71 @@ export default function AppShell({ children, lightMode, setLightMode }) {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
 
-            {/* TOP THEME TOGGLE BUTTON (Day / Dark Mode Requirement) */}
+            {/* 1. GLOBAL + NEW ACTION LAUNCHER BUTTON (Jira & Monday Standard) */}
+            <button
+              onClick={() => { setCreateTab('task'); setCreateModalOpen(true); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 16px', borderRadius: 10,
+                background: '#0052CC', color: 'white',
+                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                boxShadow: '0 4px 14px rgba(0,82,204,0.3)', transition: 'all 0.15s'
+              }}
+              title="Create New Task, Project, or Asset"
+            >
+              <Plus style={{ width: 16, height: 16 }} />
+              <span>New</span>
+            </button>
+
+            {/* 2. COMMAND PALETTE CTRL+K SEARCH BUTTON (Linear & Stripe Standard) */}
+            <button
+              onClick={() => setCmdOpen(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 14px', borderRadius: 10,
+                background: lightMode ? '#EAECEF' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${T.topbarBdr}`,
+                cursor: 'pointer', color: T.textMut, fontSize: 12, fontWeight: 600
+              }}
+              title="Search Spotlight (Ctrl+K)"
+            >
+              <Search style={{ width: 14, height: 14, color: '#4C9AFF' }} />
+              <span style={{ display: typeof window !== 'undefined' && window.innerWidth < 1024 ? 'none' : 'inline' }}>Search...</span>
+              <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: lightMode ? '#DCDFE4' : 'rgba(255,255,255,0.1)', color: T.textPri, fontFamily: 'JetBrains Mono, monospace' }}>
+                Ctrl+K
+              </span>
+            </button>
+
+            {/* 3. NOTIFICATIONS BELL & DRAWER BUTTON (Jira & GitHub Standard) */}
+            <button
+              onClick={() => setNotifOpen(true)}
+              style={{
+                position: 'relative', padding: 8, borderRadius: 10,
+                background: lightMode ? '#EAECEF' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${T.topbarBdr}`,
+                cursor: 'pointer', color: T.textPri
+              }}
+              title="Notifications Center"
+            >
+              <Bell style={{ width: 16, height: 16, color: '#4C9AFF' }} />
+              <span style={{
+                position: 'absolute', top: -3, right: -3, width: 16, height: 16, borderRadius: '50%',
+                background: '#FF5630', color: 'white', fontSize: 9, fontWeight: 900,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', border: `2px solid ${T.topbarBg}`
+              }}>
+                {notifCount}
+              </span>
+            </button>
+
+            {/* 4. TOP THEME TOGGLE BUTTON (Day / Dark Mode Requirement) */}
             <button
               onClick={() => setLightMode(l => !l)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 14px', borderRadius: 999,
-                background: lightMode ? '#EAECEF' : 'rgba(255,255,255,0.08)',
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 12px', borderRadius: 10,
+                background: lightMode ? '#EAECEF' : 'rgba(255,255,255,0.06)',
                 border: `1px solid ${T.topbarBdr}`,
                 cursor: 'pointer', color: T.textPri, fontSize: 12, fontWeight: 700,
                 transition: 'all 0.2s',
@@ -289,21 +355,8 @@ export default function AppShell({ children, lightMode, setLightMode }) {
               {lightMode
                 ? <Sun style={{ width: 15, height: 15, color: '#FFAB00' }} />
                 : <Moon style={{ width: 15, height: 15, color: '#4C9AFF' }} />}
-              <span>{lightMode ? 'Day Mode' : 'Dark Mode'}</span>
+              <span style={{ display: typeof window !== 'undefined' && window.innerWidth < 1024 ? 'none' : 'inline' }}>{lightMode ? 'Day Mode' : 'Dark Mode'}</span>
             </button>
-
-            {/* Live API badge */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '7px 14px', borderRadius: 999,
-              background: 'rgba(54,179,126,0.1)',
-              border: '1px solid rgba(54,179,126,0.2)',
-              fontSize: 12, fontWeight: 700, color: '#57D9A3',
-              fontFamily: 'JetBrains Mono, monospace',
-            }}>
-              <Activity style={{ width: 13, height: 13 }} />
-              v1.0.0 · Live
-            </div>
 
             {/* Active User Session Pill / Demo Mode Indicator */}
             {currentUser ? (
@@ -328,17 +381,16 @@ export default function AppShell({ children, lightMode, setLightMode }) {
                 padding: '6px 14px', borderRadius: 999,
                 background: 'rgba(255,171,0,0.12)',
                 border: '1px solid rgba(255,171,0,0.3)',
-                fontSize: 11, fontWeight: 700, color: '#FFDA75'
+                fontSize: 12, fontWeight: 700, color: '#FFDA75'
               }}>
-                <span className="pulse-dot pulse-gold" />
-                Demo Mode · Anonymized Sample Data
+                Guest Session
               </div>
             )}
           </div>
         </div>
 
-        {/* Page content */}
-        <div style={{ flex: 1, padding: 24, overflowX: 'hidden' }}>
+        {/* Inner Page Container */}
+        <div style={{ flex: 1, padding: 32, maxWidth: 1600, width: '100%', margin: '0 auto' }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -352,6 +404,29 @@ export default function AppShell({ children, lightMode, setLightMode }) {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Render Top-Tier Enterprise Modals & Drawers */}
+      <CommandPaletteModal
+        isOpen={cmdOpen}
+        onClose={() => setCmdOpen(false)}
+        onOpenCreateModal={(tab) => { setCreateTab(tab); setCreateModalOpen(true); }}
+        lightMode={lightMode}
+      />
+
+      <GlobalCreateModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        initialTab={createTab}
+        onItemCreated={() => { window.location.reload(); }}
+        lightMode={lightMode}
+      />
+
+      <NotificationsDrawer
+        isOpen={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        user={currentUser}
+        lightMode={lightMode}
+      />
     </div>
   );
 }

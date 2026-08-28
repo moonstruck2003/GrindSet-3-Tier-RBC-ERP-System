@@ -47,6 +47,12 @@ export const api = {
   approveEmployee:  (employeeId) => apiFetch(`/api/company/approve-employee/${employeeId}`, { method: 'POST' }),
   rejectEmployee:   (employeeId) => apiFetch(`/api/company/reject-employee/${employeeId}`, { method: 'POST' }),
 
+  tasks:         () => apiFetch('/api/tasks'),
+  createTask:    (data) => apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify(data) }),
+  updateTask:    (id, data) => apiFetch(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTask:    (id) => apiFetch(`/api/tasks/${id}`, { method: 'DELETE' }),
+  createProject: (data) => apiFetch('/api/projects', { method: 'POST', body: JSON.stringify(data) }),
+
   addEmployee: (data) => apiFetch('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
   addTransaction: (data) => apiFetch('/api/transactions', { method: 'POST', body: JSON.stringify(data) }),
 };

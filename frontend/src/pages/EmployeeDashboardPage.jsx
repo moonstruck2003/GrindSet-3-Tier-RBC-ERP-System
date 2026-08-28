@@ -5,6 +5,7 @@ import {
   Calendar, Award, ChevronRight, CheckSquare, Plus, FileText
 } from 'lucide-react';
 import { api } from '../config/api';
+import ItemDetailDrawer from '../components/ItemDetailDrawer';
 
 export default function EmployeeDashboardPage({ lightMode }) {
   const [user, setUser] = useState(null);
@@ -12,6 +13,10 @@ export default function EmployeeDashboardPage({ lightMode }) {
   const [assignments, setAssignments] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Item Drawer state
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Kanban Tasks State
   const [kanbanTasks, setKanbanTasks] = useState([
@@ -148,12 +153,14 @@ export default function EmployeeDashboardPage({ lightMode }) {
                     <motion.div
                       key={t.id}
                       whileHover={{ y: -2 }}
+                      onClick={() => { setSelectedTask(t); setDrawerOpen(true); }}
                       style={{
                         padding: 14,
                         borderRadius: 12,
                         background: cardBg,
                         border: `1px solid ${border}`,
                         boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                        cursor: 'pointer'
                       }}
                     >
                       <div style={{ fontSize: 11, color: '#4C9AFF', fontWeight: 700, marginBottom: 4 }}>{t.project}</div>
@@ -164,7 +171,7 @@ export default function EmployeeDashboardPage({ lightMode }) {
                         </span>
 
                         {/* Move Status buttons */}
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
                           {col !== 'To Do' && (
                             <button
                               onClick={() => moveTask(t.id, col === 'Done' ? 'In Progress' : 'To Do')}
@@ -225,6 +232,14 @@ export default function EmployeeDashboardPage({ lightMode }) {
         </div>
       </div>
 
+      {/* Item Detail Slide-Over Drawer */}
+      <ItemDetailDrawer
+        item={selectedTask}
+        itemType="task"
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        lightMode={lightMode}
+      />
     </div>
   );
 }

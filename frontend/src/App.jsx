@@ -10,6 +10,8 @@ import ProjectsPage from './pages/ProjectsPage';
 import FinancePage from './pages/FinancePage';
 import AuditPage from './pages/AuditPage';
 
+import RoleGuard from './components/RoleGuard';
+
 // Helper component for role-specific dashboard routing
 function RoleBasedDashboard({ lightMode }) {
   try {
@@ -39,10 +41,10 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingPage lightMode={lightMode} setLightMode={setLightMode} />} />
         <Route path="/dashboard" element={<RoleBasedDashboard lightMode={lightMode} />} />
-        <Route path="/workforce" element={<WorkforcePage lightMode={lightMode} />} />
+        <Route path="/workforce" element={<RoleGuard allowedRoles={['Admin', 'Company']} lightMode={lightMode}><WorkforcePage lightMode={lightMode} /></RoleGuard>} />
         <Route path="/projects"  element={<ProjectsPage lightMode={lightMode} />} />
         <Route path="/finance"   element={<FinancePage lightMode={lightMode} />} />
-        <Route path="/audit"     element={<AuditPage lightMode={lightMode} />} />
+        <Route path="/audit"     element={<RoleGuard allowedRoles={['Admin', 'Company']} lightMode={lightMode}><AuditPage lightMode={lightMode} /></RoleGuard>} />
         <Route path="*"          element={<LandingPage lightMode={lightMode} setLightMode={setLightMode} />} />
       </Routes>
     </AppShell>

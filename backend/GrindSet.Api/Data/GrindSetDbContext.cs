@@ -27,6 +27,7 @@ namespace GrindSet.Api.Data
         public DbSet<Transaction> Transactions { get; set; } = null!;
         public DbSet<ProjectAssignment> ProjectAssignments { get; set; } = null!;
         public DbSet<FinancialExport> FinancialExports { get; set; } = null!;
+        public DbSet<TaskItem> Tasks { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

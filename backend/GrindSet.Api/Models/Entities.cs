@@ -206,4 +206,18 @@ namespace GrindSet.Api.Models
         public string FileFormat { get; set; } = "PDF";
         public string FileName { get; set; } = string.Empty;
     }
+
+    public class TaskItem
+    {
+        [Key]
+        public int TaskId { get; set; }
+        public int ProjectId { get; set; }
+        public int? AssigneeId { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Priority { get; set; } = "Medium"; // Highest, High, Medium, Low
+        public string Status { get; set; } = "To Do"; // To Do, In Progress, In Review, Done
+        public int StoryPoints { get; set; } = 3;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
 }
