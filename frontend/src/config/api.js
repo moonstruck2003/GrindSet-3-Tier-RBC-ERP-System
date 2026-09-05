@@ -69,6 +69,10 @@ export const api = {
   updateTask:    (id, data) => apiFetch(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteTask:    (id) => apiFetch(`/api/tasks/${id}`, { method: 'DELETE' }),
   createProject: (data) => apiFetch('/api/projects', { method: 'POST', body: JSON.stringify(data) }),
+  assignProjectManager: (id, data) => apiFetch(`/api/projects/${id}/assign-manager`, { method: 'POST', body: JSON.stringify(data) }),
+  projectMembers:       (id) => apiFetch(`/api/projects/${id}/members`),
+  addProjectMember:     (id, data) => apiFetch(`/api/projects/${id}/members`, { method: 'POST', body: JSON.stringify(data) }),
+  removeProjectMember:  (id, empId) => apiFetch(`/api/projects/${id}/members/${empId}`, { method: 'DELETE' }),
 
   addEmployee: (data) => apiFetch('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
   addTransaction: (data) => apiFetch('/api/transactions', { method: 'POST', body: JSON.stringify(data) }),

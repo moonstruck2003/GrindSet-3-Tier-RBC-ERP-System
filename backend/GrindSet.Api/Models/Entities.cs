@@ -70,6 +70,7 @@ namespace GrindSet.Api.Models
         [Key]
         public int ProjectId { get; set; }
         public int CompanyId { get; set; }
+        public int? ProjectManagerId { get; set; }
         public string ProjectName { get; set; } = string.Empty;
         public string Status { get; set; } = "In Progress";
         public decimal TotalBudget { get; set; }

@@ -98,6 +98,11 @@ export default function EmployeeDashboardPage({ lightMode }) {
                   Welcome back, {user?.fullName || 'Specialist'}!
                 </h1>
                 <span className="pill pill-green">Approved Employee</span>
+                {projects.some(p => p.isManager || p.IsManager || Number(p.projectManagerId || p.ProjectManagerId) === Number(user?.userId)) && (
+                  <span className="pill pill-gold" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    ⭐ Project Manager
+                  </span>
+                )}
               </div>
               <p style={{ fontSize: 13, color: textMut, margin: 0, marginTop: 4 }}>
                 Employee Portal &nbsp;·&nbsp; My Tasks & Agile Sprint Board &nbsp;·&nbsp; Personal Log
@@ -235,14 +240,40 @@ export default function EmployeeDashboardPage({ lightMode }) {
               </tr>
             </thead>
             <tbody>
-              {projects.map(p => (
-                <tr key={p.projectId}>
-                  <td style={{ fontWeight: 700, color: textPri }}>{p.projectName}</td>
-                  <td><span className="pill pill-blue">{p.status}</span></td>
-                  <td style={{ fontWeight: 600 }}>Senior Fullstack Specialist</td>
-                  <td style={{ fontWeight: 700, color: '#57D9A3' }}>${p.totalBudget?.toLocaleString() || '250,000'}</td>
-                </tr>
-              ))}
+              {projects.map(p => {
+                const pId = Number(p.projectId || p.ProjectId);
+                const isPM = p.isManager || p.IsManager || Number(p.projectManagerId || p.ProjectManagerId) === Number(user?.userId);
+                const myAssignment = assignments.find(a => Number(a.projectId || a.ProjectId) === pId && Number(a.employeeId || a.EmployeeId) === Number(user?.userId));
+                const roleInProj = isPM ? 'Project Manager' : (myAssignment?.roleInProject || myAssignment?.RoleInProject || (p.isMember ? 'Team Member' : 'Observer / Non-Member'));
+
+                return (
+                  <tr key={pId}>
+                    <td style={{ fontWeight: 700, color: textPri }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>📁 {p.projectName || p.ProjectName}</span>
+                        {isPM && <span className="pill pill-gold" style={{ fontSize: 9, padding: '2px 6px' }}>PM</span>}
+                      </div>
+                    </td>
+                    <td><span className="pill pill-blue">{p.status || p.Status || 'In Progress'}</span></td>
+                    <td style={{ fontWeight: 600 }}>
+                      {isPM ? (
+                        <span className="pill pill-gold" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          ⭐ Project Manager
+                        </span>
+                      ) : p.isMember || myAssignment ? (
+                        <span className="pill pill-blue">
+                          {roleInProj}
+                        </span>
+                      ) : (
+                        <span className="pill pill-cyan" style={{ opacity: 0.8 }}>
+                          Observer (Not Assigned)
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ fontWeight: 700, color: '#57D9A3' }}>${(p.totalBudget || p.TotalBudget || 0).toLocaleString()}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
