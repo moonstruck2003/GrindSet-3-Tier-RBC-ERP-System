@@ -41,10 +41,18 @@ namespace GrindSet.Api.Data
                 context.Employees.AddRange(emp1, emp2);
 
                 // Seed Projects (3 Distinct Enterprise Projects)
-                var proj1 = new Project { CompanyId = companyUser.UserId, ProjectName = "Core ERP Platform v1.0", Status = "In Progress", TotalBudget = 250000.00m };
-                var proj2 = new Project { CompanyId = companyUser.UserId, ProjectName = "AI Predictive Analytics Suite", Status = "In Progress", TotalBudget = 180000.00m };
-                var proj3 = new Project { CompanyId = companyUser.UserId, ProjectName = "Mobile Workforce iOS & Android", Status = "Planned", TotalBudget = 120000.00m };
+                var proj1 = new Project { CompanyId = companyUser.UserId, ProjectManagerId = empUser2.UserId, ProjectName = "Core ERP Platform v1.0", Status = "In Progress", TotalBudget = 250000.00m };
+                var proj2 = new Project { CompanyId = companyUser.UserId, ProjectManagerId = empUser2.UserId, ProjectName = "AI Predictive Analytics Suite", Status = "In Progress", TotalBudget = 180000.00m };
+                var proj3 = new Project { CompanyId = companyUser.UserId, ProjectManagerId = null, ProjectName = "Mobile Workforce iOS & Android", Status = "Planned", TotalBudget = 120000.00m };
                 context.Projects.AddRange(proj1, proj2, proj3);
+                context.SaveChanges();
+
+                // Seed Project Assignments (Team Members)
+                context.ProjectAssignments.AddRange(
+                    new ProjectAssignment { ProjectId = proj1.ProjectId, EmployeeId = empUser2.UserId, RoleInProject = "Project Manager" },
+                    new ProjectAssignment { ProjectId = proj1.ProjectId, EmployeeId = empUser1.UserId, RoleInProject = "Senior Full-Stack Engineer" },
+                    new ProjectAssignment { ProjectId = proj2.ProjectId, EmployeeId = empUser2.UserId, RoleInProject = "Project Manager" }
+                );
                 context.SaveChanges();
 
                 // Seed Project Scopes

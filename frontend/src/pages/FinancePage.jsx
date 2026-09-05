@@ -61,8 +61,11 @@ export default function FinancePage({ lightMode }) {
 
   const userRole = user?.role || 'Company';
   const isCfoScope = userRole === 'Admin' || userRole === 'Company';
+  const managedProjects = projects.filter(p => p.isManager || p.IsManager || Number(p.projectManagerId || p.ProjectManagerId) === Number(user?.userId));
+  const managedProjectIds = new Set(managedProjects.map(p => Number(p.projectId || p.ProjectId)));
+  const isPM = managedProjects.length > 0;
 
-  // Handle Approvals / Rejections (CFO Scope)
+  // Handle Approvals / Rejections (CFO & PM Scope)
   const handleApproveExpense = async (txId) => {
     try {
       await api.approveExpense(txId);
@@ -109,6 +112,7 @@ export default function FinancePage({ lightMode }) {
   const totalBalance = accounts.reduce((s, a) => s + Number(a.CurrentBalance || a.currentBalance || 0), 0);
   const approvedExpenses = enrichedTransactions.filter(t => t.status === 'Approved').reduce((s, t) => s + t.amount, 0);
   const pendingClaims = enrichedTransactions.filter(t => t.status === 'PendingApproval');
+  const pmPendingClaims = enrichedTransactions.filter(t => t.status === 'PendingApproval' && managedProjectIds.has(t.projId));
 
   // Employee calculated earnings
   const monthlyEarnings = weeklyHours * hourlyRate * 4.33;
@@ -136,12 +140,16 @@ export default function FinancePage({ lightMode }) {
                 <h1 style={{ fontSize: 22, fontWeight: 800, color: textPri, margin: 0 }}>
                   Multi-Project General Ledger & Finance Hub
                 </h1>
-                <span className={`pill ${isCfoScope ? 'pill-blue' : 'pill-green'}`}>
-                  {isCfoScope ? 'CFO Controller Scope' : 'Employee Timesheet & Claims'}
+                <span className={`pill ${isCfoScope ? 'pill-blue' : isPM ? 'pill-gold' : 'pill-green'}`}>
+                  {isCfoScope ? 'CFO Controller Scope' : isPM ? '⭐ Project Manager Scope' : 'Employee Timesheet & Claims'}
                 </span>
               </div>
               <p style={{ fontSize: 13, color: textMut, margin: 0, marginTop: 4 }}>
-                Multi-Tenant Financial Subsystem &nbsp;·&nbsp; Isolated Project Ledgers &nbsp;·&nbsp; GAAP Accounting
+                {isCfoScope
+                  ? 'Multi-Tenant Financial Subsystem · Isolated Project Ledgers · GAAP Accounting'
+                  : isPM
+                  ? 'Project Manager Financial Authority · Team Expense Approvals · Personal Timesheets'
+                  : 'Employee Timesheet & Expense Reimbursement Hub'}
               </p>
             </div>
           </div>
@@ -201,47 +209,55 @@ export default function FinancePage({ lightMode }) {
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass metric-card" style={{ background: cardBg, border: `1px solid ${border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#FFAB00', letterSpacing: '0.06em' }}>Pending Claims Queue</div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>{pendingClaims.length}</div>
-          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>Reimbursement Claims</div>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: '#FFAB00', letterSpacing: '0.06em' }}>
+            {isCfoScope ? 'Pending Claims Queue' : isPM ? 'PM Review Queue' : 'My Pending Claims'}
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: textPri, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }}>
+            {isCfoScope ? pendingClaims.length : isPM ? pmPendingClaims.length : pendingClaims.filter(t => t.loggedBy === user?.email).length}
+          </div>
+          <div style={{ fontSize: 11, color: textMut, marginTop: 4 }}>
+            {isCfoScope ? 'Reimbursement Claims' : isPM ? 'Awaiting PM Decision' : 'Awaiting Approval'}
+          </div>
         </motion.div>
       </div>
 
-      {/* ── VIEW MODE SWITCHER BAR ── */}
-      <div className="glass" style={{ padding: '16px 24px', borderRadius: 16, background: cardBg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <FolderKanban style={{ width: 20, height: 20, color: '#0052CC' }} />
-          <span style={{ fontSize: 14, fontWeight: 800, color: textPri }}>Ledger Presentation Mode:</span>
-        </div>
+      {/* ── VIEW MODE SWITCHER BAR (CFO SCOPE) ── */}
+      {isCfoScope && (
+        <div className="glass" style={{ padding: '16px 24px', borderRadius: 16, background: cardBg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FolderKanban style={{ width: 20, height: 20, color: '#0052CC' }} />
+            <span style={{ fontSize: 14, fontWeight: 800, color: textPri }}>Ledger Presentation Mode:</span>
+          </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => setViewMode('isolated')}
-            style={{
-              padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              background: viewMode === 'isolated' ? '#0052CC' : 'transparent',
-              color: viewMode === 'isolated' ? 'white' : textMut,
-              border: `1px solid ${viewMode === 'isolated' ? '#0052CC' : border}`,
-              display: 'flex', alignItems: 'center', gap: 6, transition: 'all .15s'
-            }}
-          >
-            <Grid style={{ width: 14, height: 14 }} /> Distinct Project-Isolated Ledgers
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setViewMode('isolated')}
+              style={{
+                padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: viewMode === 'isolated' ? '#0052CC' : 'transparent',
+                color: viewMode === 'isolated' ? 'white' : textMut,
+                border: `1px solid ${viewMode === 'isolated' ? '#0052CC' : border}`,
+                display: 'flex', alignItems: 'center', gap: 6, transition: 'all .15s'
+              }}
+            >
+              <Grid style={{ width: 14, height: 14 }} /> Distinct Project-Isolated Ledgers
+            </button>
 
-          <button
-            onClick={() => setViewMode('consolidated')}
-            style={{
-              padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              background: viewMode === 'consolidated' ? '#0052CC' : 'transparent',
-              color: viewMode === 'consolidated' ? 'white' : textMut,
-              border: `1px solid ${viewMode === 'consolidated' ? '#0052CC' : border}`,
-              display: 'flex', alignItems: 'center', gap: 6, transition: 'all .15s'
-            }}
-          >
-            <ListFilter style={{ width: 14, height: 14 }} /> Unified Master Consolidated Table
-          </button>
+            <button
+              onClick={() => setViewMode('consolidated')}
+              style={{
+                padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: viewMode === 'consolidated' ? '#0052CC' : 'transparent',
+                color: viewMode === 'consolidated' ? 'white' : textMut,
+                border: `1px solid ${viewMode === 'consolidated' ? '#0052CC' : border}`,
+                display: 'flex', alignItems: 'center', gap: 6, transition: 'all .15s'
+              }}
+            >
+              <ListFilter style={{ width: 14, height: 14 }} /> Unified Master Consolidated Table
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── PERSPECTIVE 1: CFO / COMPANY OWNER WORKSPACE ── */}
       {isCfoScope && (
@@ -582,12 +598,82 @@ export default function FinancePage({ lightMode }) {
             </div>
           </div>
 
+          {/* PM Pending Approval Queue (Rendered for Project Managers) */}
+          {managedProjects.length > 0 && (
+            <div className="glass" style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid rgba(255,171,0,0.3)` }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Clock style={{ width: 22, height: 22, color: '#FFAB00' }} />
+                  <div>
+                    <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>
+                      Project Manager Approval Queue — Team Claims ({pmPendingClaims.length})
+                    </h2>
+                    <p style={{ fontSize: 12, color: textMut, margin: 0, marginTop: 2 }}>
+                      As Project Manager of {managedProjects.map(p => p.projectName || p.ProjectName).join(', ')}, you have authorization to approve or reject team expense claims.
+                    </p>
+                  </div>
+                </div>
+                <span className="pill pill-gold">⭐ PM Scope</span>
+              </div>
+
+              {pmPendingClaims.length === 0 ? (
+                <div style={{ padding: 20, borderRadius: 12, background: sectionBg, textAlign: 'center', color: textMut, fontSize: 12 }}>
+                  No pending reimbursement claims requiring your approval right now.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="gs-table">
+                    <thead>
+                      <tr>
+                        <th>Claim ID</th>
+                        <th>Project Scope</th>
+                        <th>Category</th>
+                        <th>Submitted By</th>
+                        <th>Description / Note</th>
+                        <th>Amount</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pmPendingClaims.map(t => (
+                        <tr key={t.txId}>
+                          <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: '#4C9AFF' }}>#EXP-{t.txId}</td>
+                          <td style={{ fontWeight: 700, fontSize: 12, color: '#4C9AFF' }}>📁 {t.projName}</td>
+                          <td style={{ fontWeight: 700, color: textPri }}>{t.type}</td>
+                          <td>{t.loggedBy}</td>
+                          <td style={{ fontSize: 12, color: textMut }}>{t.note || 'Team expense claim'}</td>
+                          <td style={{ fontWeight: 800, color: '#FFDA75', fontFamily: 'JetBrains Mono, monospace' }}>${t.amount.toLocaleString()}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                onClick={() => handleApproveExpense(t.txId)}
+                                style={{ padding: '5px 12px', borderRadius: 8, background: '#36B37E', color: 'white', fontWeight: 700, fontSize: 11, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                              >
+                                <CheckCircle2 style={{ width: 13, height: 13 }} /> Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectExpense(t.txId)}
+                                style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(255,86,48,0.15)', color: '#FF8F73', border: '1px solid rgba(255,86,48,0.3)', fontWeight: 700, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                              >
+                                <XCircle style={{ width: 13, height: 13 }} /> Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Employee Reimbursement Claims Tracker */}
           <div className="glass" style={{ padding: 24, borderRadius: 16, background: cardBg, border: `1px solid ${border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Coins style={{ width: 20, height: 20, color: '#4C9AFF' }} />
-                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>My Reimbursement Expense Claims</h2>
+                <h2 style={{ fontSize: 16, fontWeight: 800, color: textPri, margin: 0 }}>My Personal Reimbursement Claims</h2>
               </div>
               <button onClick={() => setClaimModalOpen(true)} className="btn-primary" style={{ padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
                 + Submit New Claim
@@ -608,7 +694,9 @@ export default function FinancePage({ lightMode }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {enrichedTransactions.map(t => (
+                  {enrichedTransactions
+                    .filter(t => t.loggedBy === user?.email || (user?.email && t.raw?.LoggedBy === user?.email) || (!isPM && t.status !== 'Approved'))
+                    .map(t => (
                     <tr key={t.txId}>
                       <td style={{ fontWeight: 700, fontFamily: 'JetBrains Mono, monospace', color: textMut }}>#EXP-{t.txId}</td>
                       <td style={{ fontWeight: 700, fontSize: 12, color: '#4C9AFF' }}>📁 {t.projName}</td>

@@ -135,8 +135,38 @@ app.MapGet("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princip
         int cid = auth.CompanyId ?? 0;
         query = query.Where(p => p.CompanyId == cid);
     }
-    var projects = await query.ToListAsync();
-    return Results.Ok(projects);
+    var projectsList = await query.ToListAsync();
+
+    int empId = auth.EmployeeId ?? auth.UserId;
+    var userAssignments = auth.IsEmployee
+        ? await db.ProjectAssignments.Where(a => a.EmployeeId == empId).Select(a => a.ProjectId).ToListAsync()
+        : new List<int>();
+
+    var pmIds = projectsList.Where(p => p.ProjectManagerId.HasValue).Select(p => p.ProjectManagerId!.Value).Distinct().ToList();
+    var pmNames = await db.Employees.Where(e => pmIds.Contains(e.EmployeeId)).ToDictionaryAsync(e => e.EmployeeId, e => e.FullName);
+
+    var result = projectsList.Select(p =>
+    {
+        bool isPM = auth.IsEmployee && p.ProjectManagerId == empId;
+        bool isMember = auth.IsCompany || auth.IsAdmin || (auth.IsEmployee && (isPM || userAssignments.Contains(p.ProjectId)));
+        string pmName = (p.ProjectManagerId.HasValue && pmNames.TryGetValue(p.ProjectManagerId.Value, out var name)) ? name : "Unassigned";
+
+        return new
+        {
+            p.ProjectId,
+            p.CompanyId,
+            p.ProjectName,
+            p.Status,
+            p.TotalBudget,
+            p.ProjectManagerId,
+            ProjectManagerName = pmName,
+            IsManager = isPM,
+            IsMember = isMember,
+            AccessLevel = isPM ? "Manager" : isMember ? "Member" : "Basic"
+        };
+    });
+
+    return Results.Ok(result);
 });
 
 app.MapGet("/api/projects/details", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
@@ -158,6 +188,7 @@ app.MapGet("/api/projects/details", async (GrindSetDbContext db, ClaimsPrincipal
                       {
                           p.ProjectId,
                           p.CompanyId,
+                          p.ProjectManagerId,
                           p.ProjectName,
                           p.Status,
                           p.TotalBudget,
@@ -165,9 +196,46 @@ app.MapGet("/api/projects/details", async (GrindSetDbContext db, ClaimsPrincipal
                           Objectives = s != null ? s.Objectives : "On-time delivery, compliance, and zero budget overrun.",
                           AccountCount = db.FinancialAccounts.Count(a => a.ProjectId == p.ProjectId),
                           TaskCount = db.Tasks.Count(t => t.ProjectId == p.ProjectId),
-                          CompletedTaskCount = db.Tasks.Count(t => t.ProjectId == p.ProjectId && t.Status == "Done")
+                          CompletedTaskCount = db.Tasks.Count(t => t.ProjectId == p.ProjectId && t.Status == "Done"),
+                          MemberCount = db.ProjectAssignments.Count(a => a.ProjectId == p.ProjectId)
                       }).ToListAsync();
-    return Results.Ok(list);
+
+    int empId = auth.EmployeeId ?? auth.UserId;
+    var userAssignments = auth.IsEmployee
+        ? await db.ProjectAssignments.Where(a => a.EmployeeId == empId).Select(a => a.ProjectId).ToListAsync()
+        : new List<int>();
+
+    var pmIds = list.Where(p => p.ProjectManagerId.HasValue).Select(p => p.ProjectManagerId!.Value).Distinct().ToList();
+    var pmNames = await db.Employees.Where(e => pmIds.Contains(e.EmployeeId)).ToDictionaryAsync(e => e.EmployeeId, e => e.FullName);
+
+    var result = list.Select(p =>
+    {
+        bool isPM = auth.IsEmployee && p.ProjectManagerId == empId;
+        bool isMember = auth.IsCompany || auth.IsAdmin || (auth.IsEmployee && (isPM || userAssignments.Contains(p.ProjectId)));
+        string pmName = (p.ProjectManagerId.HasValue && pmNames.TryGetValue(p.ProjectManagerId.Value, out var name)) ? name : "Unassigned";
+
+        return new
+        {
+            p.ProjectId,
+            p.CompanyId,
+            p.ProjectManagerId,
+            ProjectManagerName = pmName,
+            p.ProjectName,
+            p.Status,
+            p.TotalBudget,
+            p.ScopeDescription,
+            p.Objectives,
+            AccountCount = isMember ? p.AccountCount : 0,
+            TaskCount = isMember ? p.TaskCount : 0,
+            CompletedTaskCount = isMember ? p.CompletedTaskCount : 0,
+            p.MemberCount,
+            IsManager = isPM,
+            IsMember = isMember,
+            AccessLevel = isPM ? "Manager" : isMember ? "Member" : "Basic"
+        };
+    });
+
+    return Results.Ok(result);
 });
 
 app.MapGet("/api/users", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
@@ -320,8 +388,12 @@ app.MapGet("/api/transactions", async (GrindSetDbContext db, ClaimsPrincipal pri
     IQueryable<Transaction> txQuery = db.Transactions;
     if (auth.IsEmployee)
     {
-        // STRICT: Employees can ONLY view their own logged expenses/claims!
-        txQuery = txQuery.Where(tx => tx.LoggedByEmployeeId == auth.UserId);
+        int empId = auth.EmployeeId ?? auth.UserId;
+        var managedProjectIds = db.Projects.Where(p => p.CompanyId == auth.CompanyId && p.ProjectManagerId == empId).Select(p => p.ProjectId);
+        var managedAccountIds = db.FinancialAccounts.Where(a => managedProjectIds.Contains(a.ProjectId)).Select(a => a.AccountId);
+
+        // Employee sees their own logged expenses/claims PLUS transactions on accounts of projects they manage as PM
+        txQuery = txQuery.Where(tx => tx.LoggedByEmployeeId == empId || managedAccountIds.Contains(tx.AccountId));
     }
     else if (auth.IsCompany)
     {
@@ -418,10 +490,19 @@ app.MapGet("/api/accounts", async (GrindSetDbContext db, ClaimsPrincipal princip
     if (!auth.IsAuthenticated) return Results.Unauthorized();
 
     IQueryable<FinancialAccount> accQuery = db.FinancialAccounts;
-    if (auth.IsCompany || auth.IsEmployee)
+    if (auth.IsCompany)
     {
         int cid = auth.CompanyId ?? 0;
         var pids = db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId);
+        accQuery = accQuery.Where(a => pids.Contains(a.ProjectId));
+    }
+    else if (auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        int empId = auth.EmployeeId ?? auth.UserId;
+        var pids = db.Projects.Where(p => p.CompanyId == cid &&
+            (p.ProjectManagerId == empId || db.ProjectAssignments.Any(a => a.ProjectId == p.ProjectId && a.EmployeeId == empId)))
+            .Select(p => p.ProjectId);
         accQuery = accQuery.Where(a => pids.Contains(a.ProjectId));
     }
 
@@ -1067,6 +1148,22 @@ app.MapPost("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princi
         CurrentBalance = project.TotalBudget
     });
 
+    // Assign Project Manager if specified
+    if (dto.ProjectManagerId.HasValue && dto.ProjectManagerId.Value > 0)
+    {
+        var pm = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == dto.ProjectManagerId.Value && e.CompanyId == companyId);
+        if (pm != null)
+        {
+            project.ProjectManagerId = pm.EmployeeId;
+            db.ProjectAssignments.Add(new ProjectAssignment
+            {
+                ProjectId = project.ProjectId,
+                EmployeeId = pm.EmployeeId,
+                RoleInProject = "Project Manager"
+            });
+        }
+    }
+
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
         UserId = auth.UserId,
@@ -1077,6 +1174,204 @@ app.MapPost("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princi
 
     await db.SaveChangesAsync();
     return Results.Created($"/api/projects/{project.ProjectId}", project);
+});
+
+// POST /api/projects/{id}/assign-manager - Company Owner designates or reassigns Project Manager
+app.MapPost("/api/projects/{id:int}/assign-manager", async (GrindSetDbContext db, ClaimsPrincipal principal, int id, AssignManagerDto dto) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid(); // Only Company Owner or Admin can assign PM
+
+    var project = await db.Projects.FindAsync(id);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+
+    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId)
+    {
+        return Results.Forbid();
+    }
+
+    var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == dto.ProjectManagerId && e.CompanyId == project.CompanyId);
+    if (emp == null)
+    {
+        return Results.BadRequest(new { message = "Selected employee not found in company workforce." });
+    }
+
+    project.ProjectManagerId = emp.EmployeeId;
+
+    var existingAssign = await db.ProjectAssignments.FirstOrDefaultAsync(a => a.ProjectId == project.ProjectId && a.EmployeeId == emp.EmployeeId);
+    if (existingAssign != null)
+    {
+        existingAssign.RoleInProject = "Project Manager";
+    }
+    else
+    {
+        db.ProjectAssignments.Add(new ProjectAssignment
+        {
+            ProjectId = project.ProjectId,
+            EmployeeId = emp.EmployeeId,
+            RoleInProject = "Project Manager"
+        });
+    }
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = auth.UserId,
+        Action = "ASSIGN_PROJECT_MANAGER",
+        TargetEntity = $"Project:{project.ProjectName} -> PM:{emp.FullName}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new
+    {
+        message = $"Successfully assigned {emp.FullName} as Project Manager.",
+        projectId = project.ProjectId,
+        projectManagerId = emp.EmployeeId,
+        projectManagerName = emp.FullName
+    });
+});
+
+// GET /api/projects/{id}/members - Retrieve team roster for a project
+app.MapGet("/api/projects/{id:int}/members", async (GrindSetDbContext db, ClaimsPrincipal principal, int id) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    var project = await db.Projects.FindAsync(id);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+
+    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId)
+    {
+        return Results.Forbid();
+    }
+
+    var assignments = await (from a in db.ProjectAssignments
+                             where a.ProjectId == id
+                             join e in db.Employees on a.EmployeeId equals e.EmployeeId
+                             join u in db.Users on e.EmployeeId equals u.UserId
+                             select new
+                             {
+                                 a.AssignmentId,
+                                 a.ProjectId,
+                                 a.EmployeeId,
+                                 e.FullName,
+                                 e.Designation,
+                                 u.Email,
+                                 a.RoleInProject,
+                                 IsProjectManager = project.ProjectManagerId == e.EmployeeId
+                             }).ToListAsync();
+
+    return Results.Ok(assignments);
+});
+
+// POST /api/projects/{id}/members - PM or Company Owner recruits member from workforce
+app.MapPost("/api/projects/{id:int}/members", async (GrindSetDbContext db, ClaimsPrincipal principal, int id, ProjectMemberDto dto) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    var project = await db.Projects.FindAsync(id);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+
+    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId)
+    {
+        return Results.Forbid();
+    }
+
+    // Must be Company Owner OR the designated Project Manager
+    if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        if (project.ProjectManagerId != empId)
+        {
+            return Results.Json(new { message = "Forbidden. Only the designated Project Manager or Company Owner can recruit members to this project." }, statusCode: 403);
+        }
+    }
+
+    var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == dto.EmployeeId && e.CompanyId == project.CompanyId);
+    if (emp == null)
+    {
+        return Results.BadRequest(new { message = "Employee not found in company workforce." });
+    }
+
+    var existing = await db.ProjectAssignments.FirstOrDefaultAsync(a => a.ProjectId == id && a.EmployeeId == dto.EmployeeId);
+    if (existing != null)
+    {
+        existing.RoleInProject = string.IsNullOrWhiteSpace(dto.RoleInProject) ? existing.RoleInProject : dto.RoleInProject.Trim();
+    }
+    else
+    {
+        existing = new ProjectAssignment
+        {
+            ProjectId = id,
+            EmployeeId = dto.EmployeeId,
+            RoleInProject = string.IsNullOrWhiteSpace(dto.RoleInProject) ? "Team Member" : dto.RoleInProject.Trim()
+        };
+        db.ProjectAssignments.Add(existing);
+    }
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = auth.UserId,
+        Action = "ADD_PROJECT_MEMBER",
+        TargetEntity = $"Project:{project.ProjectName} -> Member:{emp.FullName}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new
+    {
+        message = $"Successfully added {emp.FullName} to project roster.",
+        member = new
+        {
+            existing.AssignmentId,
+            existing.ProjectId,
+            existing.EmployeeId,
+            emp.FullName,
+            emp.Designation,
+            existing.RoleInProject,
+            IsProjectManager = project.ProjectManagerId == emp.EmployeeId
+        }
+    });
+});
+
+// DELETE /api/projects/{id}/members/{employeeId} - PM or Company Owner removes member from roster
+app.MapDelete("/api/projects/{id:int}/members/{employeeId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int id, int employeeId) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    var project = await db.Projects.FindAsync(id);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+
+    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId)
+    {
+        return Results.Forbid();
+    }
+
+    if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        if (project.ProjectManagerId != empId)
+        {
+            return Results.Json(new { message = "Forbidden. Only the designated Project Manager or Company Owner can remove members from this project." }, statusCode: 403);
+        }
+    }
+
+    if (project.ProjectManagerId == employeeId)
+    {
+        return Results.BadRequest(new { message = "Cannot remove the Project Manager from the roster. Reassign the Project Manager first." });
+    }
+
+    var assign = await db.ProjectAssignments.FirstOrDefaultAsync(a => a.ProjectId == id && a.EmployeeId == employeeId);
+    if (assign != null)
+    {
+        db.ProjectAssignments.Remove(assign);
+        await db.SaveChangesAsync();
+    }
+
+    return Results.Ok(new { message = "Member removed from project roster successfully." });
 });
 
 // GET /api/tasks - Get tasks scoped by tenant/role
@@ -1150,9 +1445,45 @@ app.MapPost("/api/tasks", async (GrindSetDbContext db, ClaimsPrincipal principal
     }
 
     int? assignee = dto.AssigneeId;
-    if (auth.IsEmployee && (!assignee.HasValue || assignee == 0))
+    if (auth.IsEmployee)
     {
-        assignee = auth.UserId;
+        int empId = auth.EmployeeId ?? auth.UserId;
+        bool isPM = project.ProjectManagerId == empId;
+        bool isMember = isPM || await db.ProjectAssignments.AnyAsync(a => a.ProjectId == project.ProjectId && a.EmployeeId == empId);
+
+        if (!isMember)
+        {
+            return Results.Json(new { message = "Forbidden. You are not a member of this project." }, statusCode: 403);
+        }
+
+        if (assignee.HasValue && assignee.Value > 0 && assignee.Value != empId)
+        {
+            if (!isPM)
+            {
+                return Results.Json(new { message = "Forbidden. Only the designated Project Manager (or Company Owner) can assign tasks to other employees." }, statusCode: 403);
+            }
+
+            bool assigneeInProject = project.ProjectManagerId == assignee.Value || await db.ProjectAssignments.AnyAsync(a => a.ProjectId == project.ProjectId && a.EmployeeId == assignee.Value);
+            if (!assigneeInProject)
+            {
+                return Results.BadRequest(new { message = "Assignee must be an active member of this project." });
+            }
+        }
+        else if (!assignee.HasValue || assignee.Value == 0)
+        {
+            assignee = empId;
+        }
+    }
+    else if (auth.IsCompany)
+    {
+        if (assignee.HasValue && assignee.Value > 0)
+        {
+            bool inCompany = await db.Employees.AnyAsync(e => e.CompanyId == auth.CompanyId && e.EmployeeId == assignee.Value);
+            if (!inCompany)
+            {
+                return Results.BadRequest(new { message = "Assignee is not an employee of your company." });
+            }
+        }
     }
 
     var task = new TaskItem
@@ -1208,6 +1539,42 @@ app.MapPut("/api/tasks/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal p
         return Results.Forbid();
     }
 
+    if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        bool isPM = project.ProjectManagerId == empId;
+        bool isMember = isPM || await db.ProjectAssignments.AnyAsync(a => a.ProjectId == project.ProjectId && a.EmployeeId == empId);
+
+        if (!isMember)
+        {
+            return Results.Json(new { message = "Forbidden. You are not a member of this project." }, statusCode: 403);
+        }
+
+        // If not PM, member can only update task status
+        if (!isPM)
+        {
+            if (dto.AssigneeId.HasValue && dto.AssigneeId.Value != task.AssigneeId)
+            {
+                return Results.Json(new { message = "Forbidden. Only the Project Manager or Company Owner can reassign tasks." }, statusCode: 403);
+            }
+            if (!string.IsNullOrWhiteSpace(dto.Title) && dto.Title != task.Title)
+            {
+                return Results.Json(new { message = "Forbidden. Only the Project Manager or Company Owner can edit task metadata." }, statusCode: 403);
+            }
+        }
+        else
+        {
+            if (dto.AssigneeId.HasValue && dto.AssigneeId.Value != task.AssigneeId)
+            {
+                bool inRoster = project.ProjectManagerId == dto.AssigneeId.Value || await db.ProjectAssignments.AnyAsync(a => a.ProjectId == project.ProjectId && a.EmployeeId == dto.AssigneeId.Value);
+                if (!inRoster)
+                {
+                    return Results.BadRequest(new { message = "Assignee must be an active member of this project." });
+                }
+            }
+        }
+    }
+
     if (!string.IsNullOrWhiteSpace(dto.Title)) task.Title = dto.Title.Trim();
     if (dto.Description != null) task.Description = dto.Description.Trim();
     if (!string.IsNullOrWhiteSpace(dto.Priority)) task.Priority = dto.Priority.Trim();
@@ -1252,7 +1619,6 @@ app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, ClaimsPrincipa
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
 
     if (string.IsNullOrWhiteSpace(dto.AccountName))
     {
@@ -1262,6 +1628,15 @@ app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, ClaimsPrincipa
     var project = await db.Projects.FindAsync(dto.ProjectId);
     if (project == null) return Results.BadRequest(new { message = "Project not found." });
     if (!auth.IsAdmin && project.CompanyId != auth.CompanyId) return Results.Forbid();
+
+    if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        if (project.ProjectManagerId != empId)
+        {
+            return Results.Json(new { message = "Forbidden. Only the designated Project Manager or Company Owner can create financial accounts." }, statusCode: 403);
+        }
+    }
 
     var account = new FinancialAccount
     {
@@ -1291,7 +1666,6 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, ClaimsPrinci
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
 
     if (dto.Amount <= 0) return Results.BadRequest(new { message = "Reallocation amount must be greater than zero." });
     if (string.IsNullOrWhiteSpace(dto.Reason)) return Results.BadRequest(new { message = "Reason is required for audit reallocation." });
@@ -1310,6 +1684,15 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, ClaimsPrinci
     if (!auth.IsAdmin && (srcProj == null || srcProj.CompanyId != auth.CompanyId || tgtProj == null || tgtProj.CompanyId != auth.CompanyId))
     {
         return Results.Forbid();
+    }
+
+    if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        if (srcProj.ProjectManagerId != empId || tgtProj.ProjectManagerId != empId)
+        {
+            return Results.Json(new { message = "Forbidden. Only the designated Project Manager of these accounts (or Company Owner) can reallocate funds." }, statusCode: 403);
+        }
     }
 
     if (source.CurrentBalance < dto.Amount)
@@ -1366,6 +1749,15 @@ app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ClaimsPri
 
     int empId = auth.IsEmployee ? auth.UserId : (dto.EmployeeId > 0 ? dto.EmployeeId : auth.UserId);
 
+    if (auth.IsEmployee)
+    {
+        bool isMember = proj.ProjectManagerId == empId || await db.ProjectAssignments.AnyAsync(a => a.ProjectId == proj.ProjectId && a.EmployeeId == empId);
+        if (!isMember)
+        {
+            return Results.Json(new { message = "Forbidden. You must be an assigned member or Project Manager of this project to submit expense claims." }, statusCode: 403);
+        }
+    }
+
     var tx = new Transaction
     {
         AccountId = dto.AccountId,
@@ -1383,12 +1775,11 @@ app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ClaimsPri
     return Results.Created($"/api/transactions/{tx.TransactionId}", tx);
 });
 
-// POST /api/finance/approve-expense/{id} - Company Owner Approval
+// POST /api/finance/approve-expense/{id} - Project Manager or Company Owner Approval
 app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int id) =>
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
 
     var tx = await db.Transactions.FindAsync(id);
     if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
@@ -1399,6 +1790,15 @@ app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db
     if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
     {
         return Results.Forbid();
+    }
+
+    if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        if (proj.ProjectManagerId != empId)
+        {
+            return Results.Json(new { message = "Forbidden. Only the designated Project Manager for this project (or Company Owner) can approve expenses." }, statusCode: 403);
+        }
     }
 
     if (tx.Status == "Approved") return Results.Ok(new { message = "Expense is already approved." });
@@ -1421,12 +1821,11 @@ app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db
     return Results.Ok(new { message = "Expense claim approved successfully!", transaction = tx });
 });
 
-// POST /api/finance/reject-expense/{id} - Company Owner Rejection
+// POST /api/finance/reject-expense/{id} - Project Manager or Company Owner Rejection
 app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int id) =>
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
 
     var tx = await db.Transactions.FindAsync(id);
     if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
@@ -1437,6 +1836,15 @@ app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db,
     if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
     {
         return Results.Forbid();
+    }
+
+    if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        if (proj.ProjectManagerId != empId)
+        {
+            return Results.Json(new { message = "Forbidden. Only the designated Project Manager for this project (or Company Owner) can reject expenses." }, statusCode: 403);
+        }
     }
 
     tx.Status = "Rejected";
@@ -1564,7 +1972,9 @@ public record SignUpDto(string Email, string Password, string FullName, string R
 public record LoginDto(string Email, string Password);
 public record LoginRequestDto(string Email, string Password);
 public record ReportDto(string Note);
-public record ProjectCreateDto(int CompanyId, string ProjectName, decimal TotalBudget, string? Status, string? ScopeDescription, string? Objectives);
+public record ProjectCreateDto(int CompanyId, string ProjectName, decimal TotalBudget, string? Status, string? ScopeDescription, string? Objectives, int? ProjectManagerId = null);
+public record AssignManagerDto(int ProjectManagerId);
+public record ProjectMemberDto(int EmployeeId, string? RoleInProject);
 public record TaskCreateDto(int ProjectId, int? AssigneeId, string Title, string? Description, string? Priority, string? Status, int StoryPoints);
 public record TaskUpdateDto(int? ProjectId, int? AssigneeId, string? Title, string? Description, string? Priority, string? Status, int? StoryPoints);
 public record AccountCreateDto(int ProjectId, string AccountName, decimal AllocatedBudget);

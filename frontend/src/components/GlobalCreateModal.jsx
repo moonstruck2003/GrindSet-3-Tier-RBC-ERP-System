@@ -23,6 +23,8 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
   const [projectName, setProjectName] = useState('');
   const [projectBudget, setProjectBudget] = useState('150000');
   const [projectScope, setProjectScope] = useState('');
+  const [projectManagerId, setProjectManagerId] = useState('');
+  const [projectMembers, setProjectMembers] = useState([]);
 
   // Employee Form State
   const [empFullName, setEmpFullName] = useState('');
@@ -53,14 +55,25 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
         setEmployees(e);
         setAccounts(a);
         if (p.length > 0 && !taskProjectId) {
-          setTaskProjectId(p[0].projectId);
+          setTaskProjectId(p[0].projectId || p[0].ProjectId);
         }
         if (a.length > 0 && !expAccountId) {
-          setExpAccountId(a[0].accountId);
+          setExpAccountId(a[0].accountId || a[0].AccountId);
         }
       });
     }
   }, [isOpen]);
+
+  // Dynamically load members of the currently selected project for task assignment
+  useEffect(() => {
+    if (taskProjectId) {
+      api.projectMembers(taskProjectId)
+        .then(m => setProjectMembers(m || []))
+        .catch(() => setProjectMembers([]));
+    } else {
+      setProjectMembers([]);
+    }
+  }, [taskProjectId]);
 
   if (!isOpen) return null;
 
@@ -126,7 +139,8 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
         projectName: projectName.trim(),
         totalBudget: parseFloat(projectBudget) || 100000,
         status: 'In Progress',
-        scopeDescription: projectScope.trim() || 'New enterprise scope'
+        scopeDescription: projectScope.trim() || 'New enterprise scope',
+        projectManagerId: projectManagerId ? parseInt(projectManagerId) : null
       };
 
       await api.createProject(payload);
@@ -146,66 +160,58 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
   const border = lightMode ? '#DFE1E6' : 'rgba(255,255,255,0.12)';
   const textPri = lightMode ? '#091E42' : '#F4F5F7';
   const textMut = lightMode ? '#5E6C84' : '#8993A4';
-  const inputBg = lightMode ? '#FAFBFC' : 'rgba(255,255,255,0.05)';
+  const inputBg = lightMode ? '#F4F5F7' : 'rgba(255,255,255,0.06)';
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 16, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)'
-    }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
       <motion.div
-        initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.94, opacity: 0 }}
-        style={{
-          width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto', borderRadius: 24,
-          background: cardBg, border: `1px solid ${border}`, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)'
-        }}>
-
+        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        style={{ width: '100%', maxWidth: 540, background: cardBg, borderRadius: 20, border: `1px solid ${border}`, boxShadow: '0 20px 50px rgba(0,0,0,0.4)', overflow: 'hidden' }}
+      >
         {/* Modal Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: `1px solid ${border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #0052CC, #6554C0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Plus className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 style={{ fontWeight: 800, fontSize: 16, color: textPri, margin: 0 }}>Create Enterprise Asset</h3>
-              <p style={{ fontSize: 11, color: textMut, margin: 0 }}>Global action launcher</p>
-            </div>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 900, color: textPri, margin: 0 }}>Create Enterprise Record</h2>
+            <p style={{ fontSize: 12, color: textMut, margin: 0, marginTop: 2 }}>Strict 3-Tier Multi-Tenant Creation Portal</p>
           </div>
-          <button onClick={onClose} style={{ padding: 6, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: textMut }}>
-            <X className="w-5 h-5" />
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: textMut }}>
+            <X style={{ width: 20, height: 20 }} />
           </button>
         </div>
 
-        {/* Category Tabs */}
-        <div style={{ padding: '16px 24px 0' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, padding: 4, borderRadius: 12, background: lightMode ? '#F0F2F5' : '#172B4D', border: `1px solid ${border}` }}>
-            {[
-              { id: 'task', label: 'Task', icon: CheckSquare },
-              { id: 'project', label: 'Project', icon: FolderKanban },
-              { id: 'employee', label: 'Staff', icon: Users },
-              { id: 'expense', label: 'Expense', icon: Coins },
-            ].map(t => (
+        {/* Tab Navigation */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${border}`, background: lightMode ? '#FAFBFC' : 'rgba(255,255,255,0.02)' }}>
+          {[
+            { id: 'task', label: 'Task', icon: CheckSquare },
+            { id: 'project', label: 'Project', icon: FolderKanban },
+            { id: 'employee', label: 'Workforce', icon: Users },
+            { id: 'expense', label: 'Claim', icon: Coins },
+          ].map(tab => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
               <button
-                key={t.id}
-                type="button"
-                onClick={() => setActiveTab(t.id)}
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id); setError(''); setSuccess(''); }}
                 style={{
-                  padding: '8px 4px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
-                  background: activeTab === t.id ? '#0052CC' : 'transparent',
-                  color: activeTab === t.id ? 'white' : textMut, transition: 'all .15s',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
-                }}>
-                <t.icon style={{ width: 13, height: 13 }} />
-                {t.label}
+                  padding: '12px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: active ? (lightMode ? '#FFFFFF' : 'rgba(0,82,204,0.15)') : 'transparent',
+                  border: 'none', borderBottom: active ? '2px solid #0052CC' : '2px solid transparent',
+                  color: active ? '#0052CC' : textMut, fontSize: 12, fontWeight: active ? 800 : 600, cursor: 'pointer',
+                  transition: 'all .15s'
+                }}
+              >
+                <Icon style={{ width: 14, height: 14 }} />
+                {tab.label}
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
 
-        {/* Form Body */}
-        <div style={{ padding: 24 }}>
+        {/* Modal Body */}
+        <div style={{ padding: 24, maxHeight: '70vh', overflowY: 'auto' }}>
           {error && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10, background: 'rgba(222,53,11,0.12)', border: '1px solid rgba(222,53,11,0.3)', color: '#FF8F73', fontSize: 12, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10, background: 'rgba(255,86,48,0.12)', border: '1px solid rgba(255,86,48,0.3)', color: '#FF5630', fontSize: 12, marginBottom: 16 }}>
               <AlertCircle style={{ width: 16, height: 16 }} /> {error}
             </div>
           )}
@@ -216,11 +222,11 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
             </div>
           )}
 
-          {/* TAB 1: CREATE TASK (PROJECT DROPDOWN MANDATORY) */}
+          {/* TAB 1: CREATE TASK */}
           {activeTab === 'task' && (
             <form onSubmit={handleTaskSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label className="gs-label" style={{ color: textMut }}>Target Project * (Task must be bound to project)</label>
+                <label className="gs-label" style={{ color: textMut }}>Target Project *</label>
                 <select
                   required
                   className="gs-input"
@@ -233,7 +239,7 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                     const name = p.projectName ?? p.ProjectName ?? `Project #${id}`;
                     return (
                       <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
-                        {name} (#{id})
+                        {name}
                       </option>
                     );
                   })}
@@ -257,7 +263,7 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                 <label className="gs-label" style={{ color: textMut }}>Description</label>
                 <textarea
                   rows={3}
-                  placeholder="Task details and acceptance criteria..."
+                  placeholder="Task details..."
                   className="gs-input"
                   style={{ background: inputBg, color: textPri, borderColor: border, resize: 'none' }}
                   value={taskDesc}
@@ -282,7 +288,9 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                 </div>
 
                 <div>
-                  <label className="gs-label" style={{ color: textMut }}>Assignee</label>
+                  <label className="gs-label" style={{ color: textMut }}>
+                    Assignee {projectMembers.length > 0 && <span style={{ fontSize: 10, color: '#4C9AFF' }}>({projectMembers.length} on project)</span>}
+                  </label>
                   <select
                     className="gs-input"
                     style={{ background: inputBg, color: textPri, borderColor: border }}
@@ -290,15 +298,23 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                     onChange={e => setTaskAssigneeId(e.target.value)}
                   >
                     <option value="" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Unassigned</option>
-                    {employees.map(emp => {
-                      const id = emp.EmployeeId ?? emp.employeeId ?? emp.UserId ?? emp.userId;
-                      const name = emp.FullName ?? emp.fullName ?? emp.Email ?? emp.email ?? `Employee #${id}`;
-                      return (
-                        <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
-                          {name}
+                    {projectMembers.length > 0 ? (
+                      projectMembers.map(m => (
+                        <option key={m.employeeId} value={m.employeeId} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                          {m.fullName} ({m.roleInProject || m.designation}) {m.isProjectManager ? '⭐ PM' : ''}
                         </option>
-                      );
-                    })}
+                      ))
+                    ) : (
+                      employees.map(emp => {
+                        const id = emp.EmployeeId ?? emp.employeeId ?? emp.UserId ?? emp.userId;
+                        const name = emp.FullName ?? emp.fullName ?? emp.Email ?? emp.email ?? `Employee #${id}`;
+                        return (
+                          <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                            {name}
+                          </option>
+                        );
+                      })
+                    )}
                   </select>
                 </div>
 
@@ -316,7 +332,7 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
               </div>
 
               <button type="submit" disabled={loading} className="btn-primary" style={{ padding: '12px', borderRadius: 12, fontSize: 13, fontWeight: 700, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Task Bound to Project'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Task'}
               </button>
             </form>
           )}
@@ -335,6 +351,28 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
                   value={projectName}
                   onChange={e => setProjectName(e.target.value)}
                 />
+              </div>
+
+              <div>
+                <label className="gs-label" style={{ color: textMut }}>Designate Project Manager (Optional)</label>
+                <select
+                  className="gs-input"
+                  style={{ background: inputBg, color: textPri, borderColor: border }}
+                  value={projectManagerId}
+                  onChange={e => setProjectManagerId(e.target.value)}
+                >
+                  <option value="" style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>Select Project Manager from workforce...</option>
+                  {employees.map(emp => {
+                    const id = emp.EmployeeId ?? emp.employeeId ?? emp.UserId ?? emp.userId;
+                    const name = emp.FullName ?? emp.fullName ?? `Employee #${id}`;
+                    const desig = emp.Designation ?? emp.designation ?? '';
+                    return (
+                      <option key={id} value={id} style={{ background: lightMode ? '#FFFFFF' : '#172B4D', color: lightMode ? '#091E42' : '#F4F5F7' }}>
+                        {name} {desig ? `· ${desig}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
 
               <div>
