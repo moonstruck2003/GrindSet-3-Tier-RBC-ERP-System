@@ -72,13 +72,13 @@ export default function DashboardPage({ lightMode }) {
     } catch {}
     setCurrentUser(u);
 
-    const companyId = u?.userId || 1;
+    const companyId = u?.companyId || u?.userId;
 
     Promise.all([
       api.erdSummary().catch(() => null),
       api.projects().catch(() => []),
       api.transactions().catch(() => []),
-      api.pendingEmployees(companyId).catch(() => []),
+      companyId ? api.pendingEmployees(companyId).catch(() => []) : Promise.resolve([]),
     ])
       .then(([s, p, t, pe]) => {
         setSummary(s);
@@ -95,8 +95,8 @@ export default function DashboardPage({ lightMode }) {
       await api.approveEmployee(empId);
       setActionMsg(`Employee #${empId} approved successfully!`);
       setTimeout(() => setActionMsg(''), 4000);
-      const companyId = currentUser?.userId || 1;
-      const pe = await api.pendingEmployees(companyId).catch(() => []);
+      const companyId = currentUser?.companyId || currentUser?.userId;
+      const pe = companyId ? await api.pendingEmployees(companyId).catch(() => []) : [];
       setPendingEmployees(pe);
     } catch (err) {
       alert(err.message || 'Approval failed');
@@ -109,8 +109,8 @@ export default function DashboardPage({ lightMode }) {
       await api.rejectEmployee(empId);
       setActionMsg(`Employee #${empId} request rejected.`);
       setTimeout(() => setActionMsg(''), 4000);
-      const companyId = currentUser?.userId || 1;
-      const pe = await api.pendingEmployees(companyId).catch(() => []);
+      const companyId = currentUser?.companyId || currentUser?.userId;
+      const pe = companyId ? await api.pendingEmployees(companyId).catch(() => []) : [];
       setPendingEmployees(pe);
     } catch (err) {
       alert(err.message || 'Rejection failed');
@@ -231,7 +231,11 @@ export default function DashboardPage({ lightMode }) {
             ? <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {[1,2].map(i => <div key={i} style={{ height: 52, borderRadius: 10, background: T.shimmer, backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />)}
               </div>
-            : (projects.length ? projects : [{ projectId:1, projectName:'Core ERP Platform v1.0', status:'In Progress', totalBudget:250000 }]).map((p, i) => (
+            : projects.length === 0 ? (
+                <div style={{ padding: '32px 20px', textAlign: 'center', color: T.textMut, fontSize: 13 }}>
+                  No company projects found.
+                </div>
+              ) : projects.map((p, i) => (
                 <div key={p.projectId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: `1px solid ${T.divider}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,218,117,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: '#FFDA75' }}>
@@ -270,7 +274,11 @@ export default function DashboardPage({ lightMode }) {
             ? <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {[1,2,3].map(i => <div key={i} style={{ height: 40, borderRadius: 8, background: T.shimmer, backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />)}
               </div>
-            : (txns.length ? txns : [{ transactionId:1, type:'Infrastructure Cloud Expense', amount:4500, transactionDate: new Date().toISOString() }]).map(t => (
+            : txns.length === 0 ? (
+                <div style={{ padding: '32px 20px', textAlign: 'center', color: T.textMut, fontSize: 13 }}>
+                  No recent financial expenses recorded.
+                </div>
+              ) : txns.map(t => (
                 <div key={t.transactionId} style={{ padding: '11px 20px', borderBottom: `1px solid ${T.divider}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
