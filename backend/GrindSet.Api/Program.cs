@@ -5,12 +5,39 @@ using GrindSet.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Security.Claims;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "GrindSet ERP API", Version = "v1.0.0" });
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Format: Bearer {token}",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 // Configure SQLite DbContext
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=grindset.db";
@@ -97,15 +124,34 @@ app.MapGet("/api/subsystems", () => Results.Ok(new[]
     new { Id = 6, Name = "Transaction Logging", Code = "AUDIT", Status = "Active", Description = "Real-time expense tracking, password resets & security audit logs." }
 }));
 
-app.MapGet("/api/projects", async (GrindSetDbContext db) =>
+app.MapGet("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var projects = await db.Projects.ToListAsync();
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<Project> query = db.Projects;
+    if (auth.IsCompany || auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        query = query.Where(p => p.CompanyId == cid);
+    }
+    var projects = await query.ToListAsync();
     return Results.Ok(projects);
 });
 
-app.MapGet("/api/projects/details", async (GrindSetDbContext db) =>
+app.MapGet("/api/projects/details", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var list = await (from p in db.Projects
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<Project> projQuery = db.Projects;
+    if (auth.IsCompany || auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        projQuery = projQuery.Where(p => p.CompanyId == cid);
+    }
+
+    var list = await (from p in projQuery
                       join s in db.ProjectScopes on p.ProjectId equals s.ProjectId into sGrp
                       from s in sGrp.DefaultIfEmpty()
                       select new
@@ -124,14 +170,49 @@ app.MapGet("/api/projects/details", async (GrindSetDbContext db) =>
     return Results.Ok(list);
 });
 
-app.MapGet("/api/users", async (GrindSetDbContext db) =>
+app.MapGet("/api/users", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var users = await db.Users.Select(u => new { u.UserId, u.Email, u.Role, u.IsActive, u.ApprovalStatus, u.ReportedNote }).ToListAsync();
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<User> userQuery = db.Users;
+    if (auth.IsCompany)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var empUserIds = db.Employees.Where(e => e.CompanyId == cid).Select(e => e.EmployeeId);
+        userQuery = userQuery.Where(u => u.UserId == cid || empUserIds.Contains(u.UserId));
+    }
+    else if (auth.IsEmployee)
+    {
+        userQuery = userQuery.Where(u => u.UserId == auth.UserId);
+    }
+
+    var users = await userQuery.Select(u => new { u.UserId, u.Email, u.Role, u.IsActive, u.ApprovalStatus, u.ReportedNote }).ToListAsync();
     return Results.Ok(users);
 });
 
-app.MapGet("/api/erd-summary", async (GrindSetDbContext db) =>
+app.MapGet("/api/erd-summary", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (auth.IsCompany && auth.CompanyId.HasValue)
+    {
+        int cid = auth.CompanyId.Value;
+        var compProjectIds = await db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId).ToListAsync();
+        var compAccountIds = await db.FinancialAccounts.Where(a => compProjectIds.Contains(a.ProjectId)).Select(a => a.AccountId).ToListAsync();
+
+        return Results.Ok(new
+        {
+            TotalUsers = await db.Employees.CountAsync(e => e.CompanyId == cid) + 1,
+            TotalCompanies = 1,
+            TotalEmployees = await db.Employees.CountAsync(e => e.CompanyId == cid),
+            TotalProjects = compProjectIds.Count,
+            TotalTransactions = await db.Transactions.CountAsync(t => compAccountIds.Contains(t.AccountId)),
+            TotalAuditLogs = await db.SecurityAuditLogs.CountAsync(l => l.UserId == auth.UserId || db.Employees.Any(e => e.CompanyId == cid && e.EmployeeId == l.UserId)),
+            ErdTablesCount = 20,
+            ErdSchemaStatus = "Verified & Auto-Seeded"
+        });
+    }
+
     return Results.Ok(new
     {
         TotalUsers = await db.Users.CountAsync(),
@@ -146,15 +227,26 @@ app.MapGet("/api/erd-summary", async (GrindSetDbContext db) =>
 });
 
 // GET /api/employees - workforce directory
-app.MapGet("/api/employees", async (GrindSetDbContext db) =>
+app.MapGet("/api/employees", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var employees = await (from emp in db.Employees
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<Employee> empQuery = db.Employees;
+    if (auth.IsCompany || auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        empQuery = empQuery.Where(e => e.CompanyId == cid);
+    }
+
+    var employees = await (from emp in empQuery
                            join u in db.Users on emp.EmployeeId equals u.UserId
                            join dept in db.Departments on emp.DepartmentId equals dept.DepartmentId into deptGroup
                            from dept in deptGroup.DefaultIfEmpty()
                            select new
                            {
                                emp.EmployeeId,
+                               emp.CompanyId,
                                emp.FullName,
                                emp.Designation,
                                emp.HourlyRate,
@@ -165,45 +257,53 @@ app.MapGet("/api/employees", async (GrindSetDbContext db) =>
 });
 
 // POST /api/employees - onboard new employee
-app.MapPost("/api/employees", async (GrindSetDbContext db, EmployeeDto dto) =>
+app.MapPost("/api/employees", async (GrindSetDbContext db, ClaimsPrincipal principal, EmployeeDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
+    int compId = auth.IsCompany ? auth.CompanyId!.Value : 1;
+
     // Create User first
     var user = new User
     {
-        Email = dto.Email,
-        PasswordHash = "AQAAAAEAACcQAAAAEHASH_NEW==",
+        Email = dto.Email.Trim().ToLower(),
+        PasswordHash = HashPassword("employee123"),
         Role = "Employee",
-        IsActive = true
+        IsActive = true,
+        ApprovalStatus = "Approved"
     };
     db.Users.Add(user);
     await db.SaveChangesAsync();
 
-    // Get department or create/use first
-    var dept = await db.Departments.FirstOrDefaultAsync();
-    int deptId = dept?.DepartmentId ?? 1;
-
-    // Get company
-    var comp = await db.Companies.FirstOrDefaultAsync();
-    int compId = comp?.CompanyId ?? 1;
+    // Get department or create/use first for company
+    var dept = await db.Departments.FirstOrDefaultAsync(d => d.CompanyId == compId);
+    if (dept == null)
+    {
+        dept = new Department { CompanyId = compId, DepartmentName = "Engineering & Infrastructure" };
+        db.Departments.Add(dept);
+        await db.SaveChangesAsync();
+    }
 
     // Create Employee
     var emp = new Employee
     {
         EmployeeId = user.UserId,
         CompanyId = compId,
-        DepartmentId = deptId,
-        FullName = dto.FullName,
-        Designation = dto.Designation,
-        HourlyRate = dto.HourlyRate
+        DepartmentId = dept.DepartmentId,
+        FullName = dto.FullName.Trim(),
+        Designation = dto.Designation.Trim(),
+        HourlyRate = dto.HourlyRate > 0 ? dto.HourlyRate : 75.00m
     };
     db.Employees.Add(emp);
 
     // Create Audit Log
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = user.UserId,
+        UserId = auth.UserId,
         Action = "ONBOARD_EMPLOYEE",
-        TargetEntity = $"Employee:{dto.FullName}",
+        TargetEntity = $"Employee:{dto.FullName} (CompanyId:{compId})",
         EventTime = DateTime.UtcNow
     });
 
@@ -212,9 +312,26 @@ app.MapPost("/api/employees", async (GrindSetDbContext db, EmployeeDto dto) =>
 });
 
 // GET /api/transactions - financial transaction ledger
-app.MapGet("/api/transactions", async (GrindSetDbContext db) =>
+app.MapGet("/api/transactions", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var transactions = await (from tx in db.Transactions
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<Transaction> txQuery = db.Transactions;
+    if (auth.IsEmployee)
+    {
+        // STRICT: Employees can ONLY view their own logged expenses/claims!
+        txQuery = txQuery.Where(tx => tx.LoggedByEmployeeId == auth.UserId);
+    }
+    else if (auth.IsCompany)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var pids = db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId);
+        var aids = db.FinancialAccounts.Where(a => pids.Contains(a.ProjectId)).Select(a => a.AccountId);
+        txQuery = txQuery.Where(tx => aids.Contains(tx.AccountId));
+    }
+
+    var transactions = await (from tx in txQuery
                               join acc in db.FinancialAccounts on tx.AccountId equals acc.AccountId
                               join proj in db.Projects on acc.ProjectId equals proj.ProjectId
                               join emp in db.Employees on tx.LoggedByEmployeeId equals emp.EmployeeId into empGroup
@@ -227,6 +344,7 @@ app.MapGet("/api/transactions", async (GrindSetDbContext db) =>
                                   ProjectId = acc.ProjectId,
                                   ProjectName = proj.ProjectName,
                                   LoggedBy = emp != null ? emp.FullName : "System",
+                                  LoggedByEmployeeId = tx.LoggedByEmployeeId,
                                   tx.Type,
                                   tx.Amount,
                                   tx.Status,
@@ -237,18 +355,30 @@ app.MapGet("/api/transactions", async (GrindSetDbContext db) =>
 });
 
 // POST /api/transactions - log expense
-app.MapPost("/api/transactions", async (GrindSetDbContext db, TransactionDto dto) =>
+app.MapPost("/api/transactions", async (GrindSetDbContext db, ClaimsPrincipal principal, TransactionDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
     var acc = await db.FinancialAccounts.FindAsync(dto.AccountId);
     if (acc == null) return Results.NotFound("Financial Account not found");
+
+    var proj = await db.Projects.FindAsync(acc.ProjectId);
+    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
+    }
+
+    int loggedBy = auth.IsEmployee ? auth.UserId : (dto.LoggedByEmployeeId > 0 ? dto.LoggedByEmployeeId : auth.UserId);
 
     var tx = new Transaction
     {
         AccountId = dto.AccountId,
-        LoggedByEmployeeId = dto.LoggedByEmployeeId,
+        LoggedByEmployeeId = loggedBy,
         Type = dto.Type,
         Amount = dto.Amount,
-        TransactionDate = DateTime.UtcNow
+        TransactionDate = DateTime.UtcNow,
+        Status = "Approved"
     };
     db.Transactions.Add(tx);
 
@@ -271,9 +401,9 @@ app.MapPost("/api/transactions", async (GrindSetDbContext db, TransactionDto dto
     // Create Audit Log
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = dto.LoggedByEmployeeId,
+        UserId = auth.UserId,
         Action = "LOG_EXPENSE",
-        TargetEntity = $"Account:{acc.AccountName}",
+        TargetEntity = $"Account:{acc.AccountName} (${dto.Amount})",
         EventTime = DateTime.UtcNow
     });
 
@@ -282,9 +412,20 @@ app.MapPost("/api/transactions", async (GrindSetDbContext db, TransactionDto dto
 });
 
 // GET /api/accounts - financial accounts
-app.MapGet("/api/accounts", async (GrindSetDbContext db) =>
+app.MapGet("/api/accounts", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var accounts = await (from acc in db.FinancialAccounts
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<FinancialAccount> accQuery = db.FinancialAccounts;
+    if (auth.IsCompany || auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var pids = db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId);
+        accQuery = accQuery.Where(a => pids.Contains(a.ProjectId));
+    }
+
+    var accounts = await (from acc in accQuery
                           join p in db.Projects on acc.ProjectId equals p.ProjectId
                           select new
                           {
@@ -299,9 +440,24 @@ app.MapGet("/api/accounts", async (GrindSetDbContext db) =>
 });
 
 // GET /api/audit-logs - security audit logs
-app.MapGet("/api/audit-logs", async (GrindSetDbContext db) =>
+app.MapGet("/api/audit-logs", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var logs = await (from log in db.SecurityAuditLogs
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<SecurityAuditLog> logQuery = db.SecurityAuditLogs;
+    if (auth.IsEmployee)
+    {
+        logQuery = logQuery.Where(l => l.UserId == auth.UserId);
+    }
+    else if (auth.IsCompany)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var empUserIds = db.Employees.Where(e => e.CompanyId == cid).Select(e => e.EmployeeId);
+        logQuery = logQuery.Where(l => l.UserId == auth.UserId || empUserIds.Contains(l.UserId));
+    }
+
+    var logs = await (from log in logQuery
                       join u in db.Users on log.UserId equals u.UserId into uGroup
                       from u in uGroup.DefaultIfEmpty()
                       select new
@@ -317,9 +473,20 @@ app.MapGet("/api/audit-logs", async (GrindSetDbContext db) =>
 });
 
 // GET /api/assignments - resource allocation matrix
-app.MapGet("/api/assignments", async (GrindSetDbContext db) =>
+app.MapGet("/api/assignments", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var assignments = await (from assign in db.ProjectAssignments
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<ProjectAssignment> assignQuery = db.ProjectAssignments;
+    if (auth.IsCompany || auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var pids = db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId);
+        assignQuery = assignQuery.Where(a => pids.Contains(a.ProjectId));
+    }
+
+    var assignments = await (from assign in assignQuery
                              join emp in db.Employees on assign.EmployeeId equals emp.EmployeeId
                              join proj in db.Projects on assign.ProjectId equals proj.ProjectId
                              select new
@@ -336,21 +503,32 @@ app.MapGet("/api/assignments", async (GrindSetDbContext db) =>
 });
 
 // GET /api/auth/me - Verify active user session
-app.MapGet("/api/auth/me", async (GrindSetDbContext db, int userId) =>
+app.MapGet("/api/auth/me", async (GrindSetDbContext db, ClaimsPrincipal principal, int? userId) =>
 {
-    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+    var auth = await GetAuthContextAsync(principal, db);
+    int targetId = userId ?? (auth.IsAuthenticated ? auth.UserId : 0);
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == targetId);
     if (user == null) return Results.NotFound(new { message = "User not found." });
 
     string displayName = user.Email;
+    int? compId = null;
     if (user.Role == "Employee")
     {
         var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == user.UserId);
-        if (emp != null) displayName = emp.FullName;
+        if (emp != null)
+        {
+            displayName = emp.FullName;
+            compId = emp.CompanyId;
+        }
     }
     else if (user.Role == "Company")
     {
         var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == user.UserId);
-        if (comp != null) displayName = comp.CompanyName;
+        if (comp != null)
+        {
+            displayName = comp.CompanyName;
+            compId = comp.CompanyId;
+        }
     }
     else if (user.Role == "Admin")
     {
@@ -361,6 +539,7 @@ app.MapGet("/api/auth/me", async (GrindSetDbContext db, int userId) =>
     return Results.Ok(new
     {
         userId = user.UserId,
+        companyId = compId,
         email = user.Email,
         role = user.Role,
         approvalStatus = user.ApprovalStatus,
@@ -417,9 +596,11 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
     await db.SaveChangesAsync();
 
     string displayName = dto.FullName.Trim();
+    int? compId = null;
 
     if (dbRole == "Company")
     {
+        compId = user.UserId;
         var company = new Company
         {
             CompanyId = user.UserId,
@@ -442,17 +623,31 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
     }
     else // Employee
     {
-        var company = await db.Companies.FirstOrDefaultAsync();
-        int compId = company?.CompanyId ?? 1;
+        int targetCompanyId = 1;
+        if (dto.CompanyId.HasValue && await db.Companies.AnyAsync(c => c.CompanyId == dto.CompanyId.Value))
+        {
+            targetCompanyId = dto.CompanyId.Value;
+        }
+        else
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => c.LicenseStatus == "Active") ?? await db.Companies.FirstOrDefaultAsync();
+            targetCompanyId = company?.CompanyId ?? 1;
+        }
+        compId = targetCompanyId;
 
-        var dept = await db.Departments.FirstOrDefaultAsync();
-        int deptId = dept?.DepartmentId ?? 1;
+        var dept = await db.Departments.FirstOrDefaultAsync(d => d.CompanyId == targetCompanyId);
+        if (dept == null)
+        {
+            dept = new Department { CompanyId = targetCompanyId, DepartmentName = "Engineering & Infrastructure" };
+            db.Departments.Add(dept);
+            await db.SaveChangesAsync();
+        }
 
         var employee = new Employee
         {
             EmployeeId = user.UserId,
-            CompanyId = compId,
-            DepartmentId = deptId,
+            CompanyId = targetCompanyId,
+            DepartmentId = dept.DepartmentId,
             FullName = displayName,
             Designation = string.IsNullOrWhiteSpace(dto.Designation) ? "Software Specialist" : dto.Designation.Trim(),
             HourlyRate = dto.HourlyRate > 0 ? dto.HourlyRate : 75.00m
@@ -470,19 +665,22 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
 
     await db.SaveChangesAsync();
 
+    var token = JwtTokenService.GenerateToken(user, displayName, compId);
+
     return Results.Created($"/api/users/{user.UserId}", new
     {
         message = "Account created successfully!",
         user = new
         {
             userId = user.UserId,
+            companyId = compId,
             email = user.Email,
             role = user.Role,
             approvalStatus = user.ApprovalStatus,
             isActive = user.IsActive,
             reportedNote = user.ReportedNote,
             fullName = displayName,
-            token = JwtTokenService.GenerateToken(user, displayName)
+            token = token
         }
     });
 });
@@ -508,15 +706,24 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
     }
 
     string displayName = user.Email;
+    int? compId = null;
     if (user.Role == "Employee")
     {
         var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == user.UserId);
-        if (emp != null) displayName = emp.FullName;
+        if (emp != null)
+        {
+            displayName = emp.FullName;
+            compId = emp.CompanyId;
+        }
     }
     else if (user.Role == "Company")
     {
         var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == user.UserId);
-        if (comp != null) displayName = comp.CompanyName;
+        if (comp != null)
+        {
+            displayName = comp.CompanyName;
+            compId = comp.CompanyId;
+        }
     }
     else if (user.Role == "Admin")
     {
@@ -524,7 +731,7 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
         if (adm != null) displayName = adm.FullName;
     }
 
-    var token = JwtTokenService.GenerateToken(user, displayName);
+    var token = JwtTokenService.GenerateToken(user, displayName, compId);
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
@@ -544,20 +751,24 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
         user = new
         {
             userId = user.UserId,
+            companyId = compId,
             email = user.Email,
             role = user.Role,
             approvalStatus = user.ApprovalStatus,
             isActive = user.IsActive,
             reportedNote = user.ReportedNote,
             fullName = displayName,
-            token = token
         }
     });
 });
 
 // GET /api/admin/pending-companies
-app.MapGet("/api/admin/pending-companies", async (GrindSetDbContext db) =>
+app.MapGet("/api/admin/pending-companies", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsAdmin) return Results.Forbid();
+
     var pending = await (from c in db.Companies
                          join u in db.Users on c.CompanyId equals u.UserId
                          where u.ApprovalStatus == "PendingAdmin"
@@ -575,8 +786,12 @@ app.MapGet("/api/admin/pending-companies", async (GrindSetDbContext db) =>
 });
 
 // POST /api/admin/approve-company/{companyId}
-app.MapPost("/api/admin/approve-company/{companyId:int}", async (GrindSetDbContext db, int companyId) =>
+app.MapPost("/api/admin/approve-company/{companyId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int companyId) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsAdmin) return Results.Forbid();
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company");
     if (user == null) return Results.NotFound(new { message = "Company user not found." });
 
@@ -587,7 +802,7 @@ app.MapPost("/api/admin/approve-company/{companyId:int}", async (GrindSetDbConte
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = companyId,
+        UserId = auth.UserId,
         Action = "ADMIN_APPROVE_COMPANY",
         TargetEntity = $"Company:{comp?.CompanyName ?? user.Email}",
         EventTime = DateTime.UtcNow
@@ -598,8 +813,12 @@ app.MapPost("/api/admin/approve-company/{companyId:int}", async (GrindSetDbConte
 });
 
 // POST /api/admin/reject-company/{companyId}
-app.MapPost("/api/admin/reject-company/{companyId:int}", async (GrindSetDbContext db, int companyId) =>
+app.MapPost("/api/admin/reject-company/{companyId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int companyId) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsAdmin) return Results.Forbid();
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company");
     if (user == null) return Results.NotFound(new { message = "Company user not found." });
 
@@ -610,7 +829,7 @@ app.MapPost("/api/admin/reject-company/{companyId:int}", async (GrindSetDbContex
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = companyId,
+        UserId = auth.UserId,
         Action = "ADMIN_REJECT_COMPANY",
         TargetEntity = $"Company:{comp?.CompanyName ?? user.Email}",
         EventTime = DateTime.UtcNow
@@ -621,8 +840,12 @@ app.MapPost("/api/admin/reject-company/{companyId:int}", async (GrindSetDbContex
 });
 
 // POST /api/admin/block-employee/{employeeId}
-app.MapPost("/api/admin/block-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId) =>
+app.MapPost("/api/admin/block-employee/{employeeId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int employeeId) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsAdmin) return Results.Forbid();
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId);
     if (user == null) return Results.NotFound(new { message = "User not found." });
 
@@ -630,7 +853,7 @@ app.MapPost("/api/admin/block-employee/{employeeId:int}", async (GrindSetDbConte
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = employeeId,
+        UserId = auth.UserId,
         Action = user.IsActive ? "ADMIN_UNBLOCK_EMPLOYEE" : "ADMIN_BLOCK_EMPLOYEE",
         TargetEntity = $"User:{user.Email}",
         EventTime = DateTime.UtcNow
@@ -641,8 +864,12 @@ app.MapPost("/api/admin/block-employee/{employeeId:int}", async (GrindSetDbConte
 });
 
 // POST /api/admin/report-employee/{employeeId}
-app.MapPost("/api/admin/report-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId, ReportDto dto) =>
+app.MapPost("/api/admin/report-employee/{employeeId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int employeeId, ReportDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsAdmin) return Results.Forbid();
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId);
     if (user == null) return Results.NotFound(new { message = "User not found." });
 
@@ -650,7 +877,7 @@ app.MapPost("/api/admin/report-employee/{employeeId:int}", async (GrindSetDbCont
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = employeeId,
+        UserId = auth.UserId,
         Action = "ADMIN_REPORT_EMPLOYEE_TO_COMPANY",
         TargetEntity = $"User:{user.Email} | Note: {user.ReportedNote}",
         EventTime = DateTime.UtcNow
@@ -661,8 +888,12 @@ app.MapPost("/api/admin/report-employee/{employeeId:int}", async (GrindSetDbCont
 });
 
 // GET /api/company/pending-employees/{companyId}
-app.MapGet("/api/company/pending-employees/{companyId:int}", async (GrindSetDbContext db, int companyId) =>
+app.MapGet("/api/company/pending-employees/{companyId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int companyId) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsCompany && auth.CompanyId != companyId) return Results.Forbid();
+
     var pending = await (from emp in db.Employees
                          join u in db.Users on emp.EmployeeId equals u.UserId
                          join dept in db.Departments on emp.DepartmentId equals dept.DepartmentId into deptGroup
@@ -684,8 +915,16 @@ app.MapGet("/api/company/pending-employees/{companyId:int}", async (GrindSetDbCo
 });
 
 // POST /api/company/approve-employee/{employeeId}
-app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId) =>
+app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int employeeId) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
+    var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == employeeId);
+    if (emp == null) return Results.NotFound(new { message = "Employee not found." });
+    if (!auth.IsAdmin && emp.CompanyId != auth.CompanyId) return Results.Forbid();
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId && u.Role == "Employee");
     if (user == null) return Results.NotFound(new { message = "Employee user not found." });
 
@@ -693,7 +932,7 @@ app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbC
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = employeeId,
+        UserId = auth.UserId,
         Action = "COMPANY_APPROVE_EMPLOYEE",
         TargetEntity = $"Employee:{user.Email}",
         EventTime = DateTime.UtcNow
@@ -704,8 +943,16 @@ app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbC
 });
 
 // POST /api/company/reject-employee/{employeeId}
-app.MapPost("/api/company/reject-employee/{employeeId:int}", async (GrindSetDbContext db, int employeeId) =>
+app.MapPost("/api/company/reject-employee/{employeeId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int employeeId) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
+    var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == employeeId);
+    if (emp == null) return Results.NotFound(new { message = "Employee not found." });
+    if (!auth.IsAdmin && emp.CompanyId != auth.CompanyId) return Results.Forbid();
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId && u.Role == "Employee");
     if (user == null) return Results.NotFound(new { message = "Employee user not found." });
 
@@ -713,7 +960,7 @@ app.MapPost("/api/company/reject-employee/{employeeId:int}", async (GrindSetDbCo
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = employeeId,
+        UserId = auth.UserId,
         Action = "COMPANY_REJECT_EMPLOYEE",
         TargetEntity = $"Employee:{user.Email}",
         EventTime = DateTime.UtcNow
@@ -723,10 +970,35 @@ app.MapPost("/api/company/reject-employee/{employeeId:int}", async (GrindSetDbCo
     return Results.Ok(new { message = "Employee request rejected.", employeeId, approvalStatus = "Rejected" });
 });
 
-// GET /api/companies - All companies overview
-app.MapGet("/api/companies", async (GrindSetDbContext db) =>
+// GET /api/companies/public-list - Public list of approved companies for signup dropdown
+app.MapGet("/api/companies/public-list", async (GrindSetDbContext db) =>
 {
-    var companies = await (from c in db.Companies
+    var list = await (from c in db.Companies
+                      join u in db.Users on c.CompanyId equals u.UserId
+                      where u.ApprovalStatus == "Approved" && u.IsActive
+                      select new
+                      {
+                          c.CompanyId,
+                          c.CompanyName,
+                          c.Industry
+                      }).ToListAsync();
+    return Results.Ok(list);
+});
+
+// GET /api/companies - All companies overview (Admin gets all, Company gets own)
+app.MapGet("/api/companies", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<Company> compQuery = db.Companies;
+    if (auth.IsCompany || auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        compQuery = compQuery.Where(c => c.CompanyId == cid);
+    }
+
+    var companies = await (from c in compQuery
                            join u in db.Users on c.CompanyId equals u.UserId
                            select new
                            {
@@ -745,16 +1017,22 @@ app.MapGet("/api/companies", async (GrindSetDbContext db) =>
 });
 
 // POST /api/projects - Create new project
-app.MapPost("/api/projects", async (GrindSetDbContext db, ProjectCreateDto dto) =>
+app.MapPost("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal principal, ProjectCreateDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
     if (string.IsNullOrWhiteSpace(dto.ProjectName))
     {
         return Results.BadRequest(new { message = "Project Name is required." });
     }
 
+    int companyId = auth.IsCompany ? auth.CompanyId!.Value : (dto.CompanyId > 0 ? dto.CompanyId : 1);
+
     var project = new Project
     {
-        CompanyId = dto.CompanyId > 0 ? dto.CompanyId : 1,
+        CompanyId = companyId,
         ProjectName = dto.ProjectName.Trim(),
         Status = string.IsNullOrWhiteSpace(dto.Status) ? "In Progress" : dto.Status.Trim(),
         TotalBudget = dto.TotalBudget > 0 ? dto.TotalBudget : 100000.00m
@@ -789,14 +1067,44 @@ app.MapPost("/api/projects", async (GrindSetDbContext db, ProjectCreateDto dto) 
         CurrentBalance = project.TotalBudget
     });
 
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = auth.UserId,
+        Action = "CREATE_PROJECT",
+        TargetEntity = $"Project:{project.ProjectName} (CompanyId:{companyId})",
+        EventTime = DateTime.UtcNow
+    });
+
     await db.SaveChangesAsync();
     return Results.Created($"/api/projects/{project.ProjectId}", project);
 });
 
-// GET /api/tasks - Get all tasks with project and assignee info
-app.MapGet("/api/tasks", async (GrindSetDbContext db) =>
+// GET /api/tasks - Get tasks scoped by tenant/role
+app.MapGet("/api/tasks", async (GrindSetDbContext db, ClaimsPrincipal principal, bool? myTasksOnly) =>
 {
-    var tasks = await (from t in db.Tasks
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<TaskItem> taskQuery = db.Tasks;
+    if (auth.IsCompany)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var projectIds = db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId);
+        taskQuery = taskQuery.Where(t => projectIds.Contains(t.ProjectId));
+    }
+    else if (auth.IsEmployee)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var projectIds = db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId);
+        taskQuery = taskQuery.Where(t => projectIds.Contains(t.ProjectId));
+
+        if (myTasksOnly == true)
+        {
+            taskQuery = taskQuery.Where(t => t.AssigneeId == auth.UserId);
+        }
+    }
+
+    var tasks = await (from t in taskQuery
                        join p in db.Projects on t.ProjectId equals p.ProjectId
                        join u in db.Users on t.AssigneeId equals u.UserId into uGroup
                        from u in uGroup.DefaultIfEmpty()
@@ -819,9 +1127,12 @@ app.MapGet("/api/tasks", async (GrindSetDbContext db) =>
     return Results.Ok(tasks);
 });
 
-// POST /api/tasks - Create new task (STRICT REQUIREMENT: MUST BE SCOPED TO SPECIFIC PROJECT)
-app.MapPost("/api/tasks", async (GrindSetDbContext db, TaskCreateDto dto) =>
+// POST /api/tasks - Create new task (Scoped to project)
+app.MapPost("/api/tasks", async (GrindSetDbContext db, ClaimsPrincipal principal, TaskCreateDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
     if (string.IsNullOrWhiteSpace(dto.Title))
     {
         return Results.BadRequest(new { message = "Task Title is required." });
@@ -833,10 +1144,21 @@ app.MapPost("/api/tasks", async (GrindSetDbContext db, TaskCreateDto dto) =>
         return Results.BadRequest(new { message = "Invalid Project ID. Every task must be bound to a specific project." });
     }
 
+    if (!auth.IsAdmin && (project.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
+    }
+
+    int? assignee = dto.AssigneeId;
+    if (auth.IsEmployee && (!assignee.HasValue || assignee == 0))
+    {
+        assignee = auth.UserId;
+    }
+
     var task = new TaskItem
     {
         ProjectId = dto.ProjectId,
-        AssigneeId = dto.AssigneeId,
+        AssigneeId = assignee,
         Title = dto.Title.Trim(),
         Description = dto.Description?.Trim() ?? string.Empty,
         Priority = string.IsNullOrWhiteSpace(dto.Priority) ? "Medium" : dto.Priority.Trim(),
@@ -849,7 +1171,7 @@ app.MapPost("/api/tasks", async (GrindSetDbContext db, TaskCreateDto dto) =>
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = dto.AssigneeId ?? 1,
+        UserId = auth.UserId,
         Action = "CREATE_TASK",
         TargetEntity = $"Task:{task.Title} (Project:{project.ProjectName})",
         EventTime = DateTime.UtcNow
@@ -872,10 +1194,19 @@ app.MapPost("/api/tasks", async (GrindSetDbContext db, TaskCreateDto dto) =>
 });
 
 // PUT /api/tasks/{id} - Update task details, status, priority, assignee
-app.MapPut("/api/tasks/{id:int}", async (GrindSetDbContext db, int id, TaskUpdateDto dto) =>
+app.MapPut("/api/tasks/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int id, TaskUpdateDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
     var task = await db.Tasks.FindAsync(id);
     if (task == null) return Results.NotFound(new { message = "Task not found." });
+
+    var project = await db.Projects.FindAsync(task.ProjectId);
+    if (!auth.IsAdmin && (project == null || project.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
+    }
 
     if (!string.IsNullOrWhiteSpace(dto.Title)) task.Title = dto.Title.Trim();
     if (dto.Description != null) task.Description = dto.Description.Trim();
@@ -883,17 +1214,33 @@ app.MapPut("/api/tasks/{id:int}", async (GrindSetDbContext db, int id, TaskUpdat
     if (!string.IsNullOrWhiteSpace(dto.Status)) task.Status = dto.Status.Trim();
     if (dto.AssigneeId.HasValue) task.AssigneeId = dto.AssigneeId.Value;
     if (dto.StoryPoints.HasValue && dto.StoryPoints.Value > 0) task.StoryPoints = dto.StoryPoints.Value;
-    if (dto.ProjectId.HasValue && dto.ProjectId.Value > 0) task.ProjectId = dto.ProjectId.Value;
+    if (dto.ProjectId.HasValue && dto.ProjectId.Value > 0)
+    {
+        var newProj = await db.Projects.FindAsync(dto.ProjectId.Value);
+        if (newProj != null && (auth.IsAdmin || newProj.CompanyId == auth.CompanyId))
+        {
+            task.ProjectId = dto.ProjectId.Value;
+        }
+    }
 
     await db.SaveChangesAsync();
     return Results.Ok(task);
 });
 
 // DELETE /api/tasks/{id} - Delete task
-app.MapDelete("/api/tasks/{id:int}", async (GrindSetDbContext db, int id) =>
+app.MapDelete("/api/tasks/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int id) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
     var task = await db.Tasks.FindAsync(id);
     if (task == null) return Results.NotFound(new { message = "Task not found." });
+
+    var project = await db.Projects.FindAsync(task.ProjectId);
+    if (!auth.IsAdmin && (project == null || project.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
+    }
 
     db.Tasks.Remove(task);
     await db.SaveChangesAsync();
@@ -901,16 +1248,24 @@ app.MapDelete("/api/tasks/{id:int}", async (GrindSetDbContext db, int id) =>
 });
 
 // POST /api/finance/accounts - Create Financial Account
-app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, AccountCreateDto dto) =>
+app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, ClaimsPrincipal principal, AccountCreateDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
     if (string.IsNullOrWhiteSpace(dto.AccountName))
     {
         return Results.BadRequest(new { message = "Account Name is required." });
     }
 
+    var project = await db.Projects.FindAsync(dto.ProjectId);
+    if (project == null) return Results.BadRequest(new { message = "Project not found." });
+    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId) return Results.Forbid();
+
     var account = new FinancialAccount
     {
-        ProjectId = dto.ProjectId > 0 ? dto.ProjectId : 1,
+        ProjectId = dto.ProjectId,
         AccountName = dto.AccountName.Trim(),
         AllocatedBudget = dto.AllocatedBudget > 0 ? dto.AllocatedBudget : 50000.00m,
         CurrentBalance = dto.AllocatedBudget > 0 ? dto.AllocatedBudget : 50000.00m
@@ -921,7 +1276,7 @@ app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, AccountCreateD
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = 1,
+        UserId = auth.UserId,
         Action = "CREATE_FINANCIAL_ACCOUNT",
         TargetEntity = $"Account:{account.AccountName} (${account.AllocatedBudget})",
         EventTime = DateTime.UtcNow
@@ -932,8 +1287,12 @@ app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, AccountCreateD
 });
 
 // POST /api/finance/reallocate - Inter-Account Budget Transfer
-app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, FundReallocateDto dto) =>
+app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, ClaimsPrincipal principal, FundReallocateDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
     if (dto.Amount <= 0) return Results.BadRequest(new { message = "Reallocation amount must be greater than zero." });
     if (string.IsNullOrWhiteSpace(dto.Reason)) return Results.BadRequest(new { message = "Reason is required for audit reallocation." });
 
@@ -943,6 +1302,14 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, FundRealloca
     if (source == null || target == null)
     {
         return Results.BadRequest(new { message = "Source or target financial account not found." });
+    }
+
+    var srcProj = await db.Projects.FindAsync(source.ProjectId);
+    var tgtProj = await db.Projects.FindAsync(target.ProjectId);
+
+    if (!auth.IsAdmin && (srcProj == null || srcProj.CompanyId != auth.CompanyId || tgtProj == null || tgtProj.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
     }
 
     if (source.CurrentBalance < dto.Amount)
@@ -969,7 +1336,7 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, FundRealloca
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = 1,
+        UserId = auth.UserId,
         Action = "REALLOCATE_FUNDS",
         TargetEntity = $"From {source.AccountName} To {target.AccountName} (${dto.Amount})",
         EventTime = DateTime.UtcNow
@@ -980,18 +1347,29 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, FundRealloca
 });
 
 // POST /api/finance/expense-claim - Employee Reimbursement Claim Submission
-app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ExpenseClaimDto dto) =>
+app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ClaimsPrincipal principal, ExpenseClaimDto dto) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
     if (dto.Amount <= 0) return Results.BadRequest(new { message = "Claim amount must be greater than zero." });
     if (string.IsNullOrWhiteSpace(dto.Type)) return Results.BadRequest(new { message = "Expense type is required." });
 
     var account = await db.FinancialAccounts.FindAsync(dto.AccountId);
     if (account == null) return Results.BadRequest(new { message = "Financial account not found." });
 
+    var proj = await db.Projects.FindAsync(account.ProjectId);
+    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
+    }
+
+    int empId = auth.IsEmployee ? auth.UserId : (dto.EmployeeId > 0 ? dto.EmployeeId : auth.UserId);
+
     var tx = new Transaction
     {
         AccountId = dto.AccountId,
-        LoggedByEmployeeId = dto.EmployeeId > 0 ? dto.EmployeeId : 1,
+        LoggedByEmployeeId = empId,
         Type = dto.Type.Trim(),
         Amount = dto.Amount,
         Status = "PendingApproval",
@@ -1006,16 +1384,26 @@ app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ExpenseCl
 });
 
 // POST /api/finance/approve-expense/{id} - Company Owner Approval
-app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db, int id) =>
+app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int id) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
     var tx = await db.Transactions.FindAsync(id);
     if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
+
+    var account = await db.FinancialAccounts.FindAsync(tx.AccountId);
+    var proj = account != null ? await db.Projects.FindAsync(account.ProjectId) : null;
+
+    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
+    }
 
     if (tx.Status == "Approved") return Results.Ok(new { message = "Expense is already approved." });
 
     tx.Status = "Approved";
-
-    var account = await db.FinancialAccounts.FindAsync(tx.AccountId);
     if (account != null)
     {
         account.CurrentBalance -= tx.Amount;
@@ -1023,7 +1411,7 @@ app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = 1,
+        UserId = auth.UserId,
         Action = "APPROVE_EXPENSE_CLAIM",
         TargetEntity = $"Expense #{tx.TransactionId} (${tx.Amount})",
         EventTime = DateTime.UtcNow
@@ -1034,16 +1422,28 @@ app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db
 });
 
 // POST /api/finance/reject-expense/{id} - Company Owner Rejection
-app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db, int id) =>
+app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int id) =>
 {
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsEmployee) return Results.Forbid();
+
     var tx = await db.Transactions.FindAsync(id);
     if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
+
+    var account = await db.FinancialAccounts.FindAsync(tx.AccountId);
+    var proj = account != null ? await db.Projects.FindAsync(account.ProjectId) : null;
+
+    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    {
+        return Results.Forbid();
+    }
 
     tx.Status = "Rejected";
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
-        UserId = 1,
+        UserId = auth.UserId,
         Action = "REJECT_EXPENSE_CLAIM",
         TargetEntity = $"Expense #{tx.TransactionId} (${tx.Amount})",
         EventTime = DateTime.UtcNow
@@ -1054,9 +1454,25 @@ app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db,
 });
 
 // GET /api/finance/export/csv - Download General Ledger CSV Report
-app.MapGet("/api/finance/export/csv", async (GrindSetDbContext db) =>
+app.MapGet("/api/finance/export/csv", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
 {
-    var txs = await (from t in db.Transactions
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    IQueryable<Transaction> txQuery = db.Transactions;
+    if (auth.IsEmployee)
+    {
+        txQuery = txQuery.Where(tx => tx.LoggedByEmployeeId == auth.UserId);
+    }
+    else if (auth.IsCompany)
+    {
+        int cid = auth.CompanyId ?? 0;
+        var pids = db.Projects.Where(p => p.CompanyId == cid).Select(p => p.ProjectId);
+        var aids = db.FinancialAccounts.Where(a => pids.Contains(a.ProjectId)).Select(a => a.AccountId);
+        txQuery = txQuery.Where(tx => aids.Contains(tx.AccountId));
+    }
+
+    var txs = await (from t in txQuery
                      join a in db.FinancialAccounts on t.AccountId equals a.AccountId
                      join u in db.Users on t.LoggedByEmployeeId equals u.UserId into uGrp
                      from u in uGrp.DefaultIfEmpty()
@@ -1101,10 +1517,50 @@ static bool VerifyPassword(string password, string storedHash)
     return HashPassword(password) == storedHash;
 }
 
+static async Task<AuthUserContext> GetAuthContextAsync(ClaimsPrincipal? principal, GrindSetDbContext db)
+{
+    if (principal == null || principal.Identity?.IsAuthenticated != true)
+    {
+        return new AuthUserContext(false, 0, "", null, null);
+    }
+
+    var idStr = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    if (!int.TryParse(idStr, out int userId))
+    {
+        return new AuthUserContext(false, 0, "", null, null);
+    }
+
+    var role = principal.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    int? companyId = null;
+    int? employeeId = null;
+
+    var compClaim = principal.FindFirst("companyId")?.Value;
+    if (int.TryParse(compClaim, out int cid))
+    {
+        companyId = cid;
+    }
+
+    if (role == "Company")
+    {
+        companyId = userId;
+    }
+    else if (role == "Employee")
+    {
+        employeeId = userId;
+        if (!companyId.HasValue)
+        {
+            var emp = await db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.EmployeeId == userId);
+            companyId = emp?.CompanyId;
+        }
+    }
+
+    return new AuthUserContext(true, userId, role, companyId, employeeId);
+}
+
 // DTO Records
 public record EmployeeDto(string Email, string FullName, string Designation, decimal HourlyRate);
 public record TransactionDto(int AccountId, int LoggedByEmployeeId, string Type, decimal Amount);
-public record SignUpDto(string Email, string Password, string FullName, string Role, string? Designation, decimal HourlyRate, string? CompanyName, string? Industry);
+public record SignUpDto(string Email, string Password, string FullName, string Role, string? Designation, decimal HourlyRate, string? CompanyName, string? Industry, int? CompanyId);
 public record LoginDto(string Email, string Password);
 public record LoginRequestDto(string Email, string Password);
 public record ReportDto(string Note);
@@ -1114,5 +1570,13 @@ public record TaskUpdateDto(int? ProjectId, int? AssigneeId, string? Title, stri
 public record AccountCreateDto(int ProjectId, string AccountName, decimal AllocatedBudget);
 public record FundReallocateDto(int ProjectId, int SourceAccountId, int TargetAccountId, decimal Amount, string Reason);
 public record ExpenseClaimDto(int AccountId, int EmployeeId, string Type, decimal Amount, string? Note);
+
+// Auth Context
+public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int? CompanyId, int? EmployeeId)
+{
+    public bool IsAdmin => Role == "Admin";
+    public bool IsCompany => Role == "Company";
+    public bool IsEmployee => Role == "Employee";
+}
 
 

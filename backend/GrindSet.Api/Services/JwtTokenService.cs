@@ -12,7 +12,7 @@ public class JwtTokenService
     public const string Issuer = "GrindSetERP";
     public const string Audience = "GrindSetClients";
 
-    public static string GenerateToken(User user, string fullName = "")
+    public static string GenerateToken(User user, string fullName = "", int? companyId = null)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
         var key = Encoding.UTF8.GetBytes(SecretKey);
@@ -25,6 +25,12 @@ public class JwtTokenService
             new Claim("approvalStatus", user.ApprovalStatus ?? "Approved"),
             new Claim("isActive", user.IsActive.ToString())
         };
+
+        var effectiveCompanyId = companyId ?? (user.Role == "Company" ? user.UserId : (int?)null);
+        if (effectiveCompanyId.HasValue)
+        {
+            claims.Add(new Claim("companyId", effectiveCompanyId.Value.ToString()));
+        }
 
         if (!string.IsNullOrEmpty(fullName))
         {

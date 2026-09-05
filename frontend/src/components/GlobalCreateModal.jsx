@@ -115,8 +115,14 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
 
     setLoading(true);
     try {
+      let u = null;
+      try {
+        const raw = localStorage.getItem('grindset_user');
+        if (raw) u = JSON.parse(raw);
+      } catch {}
+
       const payload = {
-        companyId: 1,
+        companyId: u?.companyId || u?.userId || 0,
         projectName: projectName.trim(),
         totalBudget: parseFloat(projectBudget) || 100000,
         status: 'In Progress',

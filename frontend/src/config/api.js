@@ -53,6 +53,7 @@ export const api = {
   me:           (userId) => apiFetch(`/api/auth/me?userId=${userId}`),
 
   companies:        () => apiFetch('/api/companies'),
+  publicCompanies:  () => apiFetch('/api/companies/public-list'),
   pendingCompanies: () => apiFetch('/api/admin/pending-companies'),
   approveCompany:   (companyId) => apiFetch(`/api/admin/approve-company/${companyId}`, { method: 'POST' }),
   rejectCompany:    (companyId) => apiFetch(`/api/admin/reject-company/${companyId}`, { method: 'POST' }),

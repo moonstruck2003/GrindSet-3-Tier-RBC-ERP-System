@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, X, User, Mail, Lock, ChevronRight, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Shield, X, User, Mail, Lock, ChevronRight, AlertCircle, CheckCircle2, Loader2, Building2 } from 'lucide-react';
 import { api } from '../config/api';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = 'signup', isDark = true }) {
@@ -16,6 +16,19 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
   const [hourlyRate, setHourlyRate] = useState('85');
   const [companyName, setCompanyName] = useState('');
   const [industry, setIndustry] = useState('Enterprise Technology');
+  const [companyList, setCompanyList] = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      api.publicCompanies().then(comps => {
+        setCompanyList(comps || []);
+        if (comps && comps.length > 0 && !selectedCompanyId) {
+          setSelectedCompanyId(comps[0].companyId);
+        }
+      }).catch(() => setCompanyList([]));
+    }
+  }, [isOpen]);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -97,7 +110,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           designation: designation,
           hourlyRate: parseFloat(hourlyRate) || 75.0,
           companyName: companyName,
-          industry: industry
+          industry: industry,
+          companyId: selectedCompanyId ? parseInt(selectedCompanyId) : null
         };
 
         const res = await api.signup(payload);
@@ -294,6 +308,29 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
               {/* Role specific fields */}
               {role === 'Employee' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label className="gs-label" style={{ color: textMuted }}>Select Organization *</label>
+                    <div style={{ position: 'relative' }}>
+                      <Building2 className="w-4 h-4" style={{ position: 'absolute', left: 12, top: 12, color: textMuted }} />
+                      <select
+                        className="gs-input"
+                        style={{ paddingLeft: 38, background: inputBg, color: textPrimary, borderColor: border, width: '100%', cursor: 'pointer' }}
+                        value={selectedCompanyId}
+                        onChange={e => setSelectedCompanyId(e.target.value)}
+                        required
+                      >
+                        {companyList.length > 0 ? (
+                          companyList.map(c => (
+                            <option key={c.companyId} value={c.companyId} style={{ background: inputBg, color: textPrimary }}>
+                              {c.companyName} ({c.industry || 'Enterprise'})
+                            </option>
+                          ))
+                        ) : (
+                          <option value="1" style={{ background: inputBg, color: textPrimary }}>Acme Global Technologies</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
                   <div>
                     <label className="gs-label" style={{ color: textMuted }}>Designation</label>
                     <input

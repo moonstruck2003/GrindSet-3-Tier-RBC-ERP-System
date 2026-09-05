@@ -19,31 +19,42 @@ export default function EmployeeDashboardPage({ lightMode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Kanban Tasks State
-  const [kanbanTasks, setKanbanTasks] = useState([
-    { id: 101, title: 'Implement Frontend Route Guards', status: 'In Progress', priority: 'High', project: 'Core ERP v1.0' },
-    { id: 102, title: 'Configure SQLite EF Migrations', status: 'Done', priority: 'Medium', project: 'Core ERP v1.0' },
-    { id: 103, title: 'Design Jira Atlassian UI Tokens', status: 'Done', priority: 'High', project: 'Core ERP v1.0' },
-    { id: 104, title: 'Audit Password Hashing Salt', status: 'To Do', priority: 'High', project: 'Core ERP v1.0' },
-    { id: 105, title: 'Write Financial P&L PDF Exporter', status: 'To Do', priority: 'Low', project: 'Core ERP v1.0' },
-  ]);
+  const [kanbanTasks, setKanbanTasks] = useState([]);
 
   useEffect(() => {
+    let u = null;
     try {
       const raw = localStorage.getItem('grindset_user');
-      if (raw) setUser(JSON.parse(raw));
+      if (raw) {
+        u = JSON.parse(raw);
+        setUser(u);
+      }
     } catch {}
 
     const loadData = async () => {
       setLoading(true);
       try {
-        const [projRes, assignRes, txRes] = await Promise.all([
+        const [projRes, assignRes, txRes, tasksRes] = await Promise.all([
           api.projects().catch(() => []),
           api.assignments().catch(() => []),
           api.transactions().catch(() => []),
+          api.tasks().catch(() => []),
         ]);
         setProjects(projRes);
         setAssignments(assignRes);
         setTransactions(txRes);
+
+        if (tasksRes && tasksRes.length > 0) {
+          const mapped = tasksRes.map(t => ({
+            id: t.taskId || t.TaskId,
+            title: t.title || t.Title,
+            status: t.status || t.Status || 'To Do',
+            priority: t.priority || t.Priority || 'Medium',
+            project: t.projectName || t.ProjectName || 'Core Project',
+            assigneeId: t.assigneeId || t.AssigneeId
+          }));
+          setKanbanTasks(mapped);
+        }
       } catch (err) {
         console.error('Failed to load employee dashboard data:', err);
       } finally {
@@ -53,8 +64,13 @@ export default function EmployeeDashboardPage({ lightMode }) {
     loadData();
   }, []);
 
-  const moveTask = (taskId, newStatus) => {
+  const moveTask = async (taskId, newStatus) => {
     setKanbanTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    try {
+      await api.updateTask(taskId, { status: newStatus });
+    } catch (err) {
+      console.error('Failed to persist task status update:', err);
+    }
   };
 
   // Theme styling
