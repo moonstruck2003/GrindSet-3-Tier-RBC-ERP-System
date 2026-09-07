@@ -30,12 +30,12 @@ public class EmailService : IEmailService
         string? customResetUrl = null)
     {
         var smtpSection = _config.GetSection("SmtpSettings");
-        var host = smtpSection.GetValue<string>("Host") ?? "smtp-relay.brevo.com";
+        var host = smtpSection.GetValue<string>("Host") ?? "smtp.resend.com";
         var port = smtpSection.GetValue<int?>("Port") ?? 587;
         var senderName = smtpSection.GetValue<string>("SenderName") ?? "GrindSet Security";
-        var senderEmail = smtpSection.GetValue<string>("SenderEmail") ?? "security@grindset.io";
-        var username = smtpSection.GetValue<string>("Username") ?? Environment.GetEnvironmentVariable("BREVO_SMTP_USER") ?? "";
-        var password = smtpSection.GetValue<string>("Password") ?? Environment.GetEnvironmentVariable("BREVO_SMTP_KEY") ?? "";
+        var senderEmail = smtpSection.GetValue<string>("SenderEmail") ?? "onboarding@resend.dev";
+        var username = smtpSection.GetValue<string>("Username") ?? (Environment.GetEnvironmentVariable("RESEND_API_KEY") != null ? "resend" : "resend");
+        var password = smtpSection.GetValue<string>("Password") ?? Environment.GetEnvironmentVariable("RESEND_API_KEY") ?? "";
         var enableSsl = smtpSection.GetValue<bool?>("EnableSsl") ?? true;
         var frontendBaseUrl = smtpSection.GetValue<string>("FrontendBaseUrl") ?? "http://localhost:5173";
 
@@ -131,6 +131,46 @@ public class EmailService : IEmailService
             return (true, "SMTP sandbox test mode active. Password reset link generated successfully.", resetUrl);
         }
 
+        // 1. If Resend API key is detected, use Resend's high-speed API
+        if (password.StartsWith("re_") || host.Contains("resend.com"))
+        {
+            try
+            {
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", password);
+
+                var payload = new
+                {
+                    from = $"{senderName} <{senderEmail}>",
+                    to = new[] { toEmail },
+                    subject = "GrindSet ERP - Password Reset Request",
+                    html = htmlBody
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                var response = await httpClient.PostAsync("https://api.resend.com/emails", content);
+                var responseText = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("[EmailService] Password reset email successfully dispatched via Resend to {Email}. Response: {Response}", toEmail, responseText);
+                    return (true, "Password reset email dispatched successfully via Resend.", resetUrl);
+                }
+                else
+                {
+                    _logger.LogWarning("[EmailService] Resend API responded with {Code}: {Body}. Reset URL is still valid: {ResetUrl}", response.StatusCode, responseText, resetUrl);
+                    return (true, $"Resend notice: {responseText}", resetUrl);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[EmailService] Error calling Resend API: {Msg}. Falling back to standard SMTP...", ex.Message);
+            }
+        }
+
+        // 2. Standard SMTP Client fallback
         try
         {
             using var client = new SmtpClient(host, port)
