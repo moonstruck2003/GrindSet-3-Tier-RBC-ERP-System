@@ -337,6 +337,28 @@ app.MapPost("/api/employees", async (GrindSetDbContext db, ClaimsPrincipal princ
 
     int compId = auth.IsCompany ? auth.CompanyId!.Value : 1;
 
+    // Check tier limits for company
+    var limits = await GetCompanyTierLimitsAsync(db, compId);
+    if (limits.MaxEmployees.HasValue)
+    {
+        var currentEmployees = await (from empItem in db.Employees
+                                      join uItem in db.Users on empItem.EmployeeId equals uItem.UserId
+                                      where empItem.CompanyId == compId && uItem.ApprovalStatus == "Approved"
+                                      select empItem).CountAsync();
+        if (currentEmployees >= limits.MaxEmployees.Value)
+        {
+            return Results.BadRequest(new
+            {
+                message = $"Your organization has reached the limit of {limits.MaxEmployees.Value} employees on the {limits.Tier} tier. Upgrade to {(limits.Tier == "Free" ? "Professional ($15/mo) or Enterprise ($29/mo)" : "Enterprise ($29/mo)")} in Billing & Plans to onboard more employees.",
+                code = "TIER_LIMIT_EXCEEDED",
+                tier = limits.Tier,
+                current = currentEmployees,
+                max = limits.MaxEmployees.Value,
+                resource = "Employees"
+            });
+        }
+    }
+
     // Create User first
     var user = new User
     {
@@ -1210,6 +1232,28 @@ app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbC
     if (emp == null) return Results.NotFound(new { message = "Employee not found." });
     if (!auth.IsAdmin && emp.CompanyId != auth.CompanyId) return Results.Forbid();
 
+    int targetCompanyId = emp.CompanyId;
+    var limits = await GetCompanyTierLimitsAsync(db, targetCompanyId);
+    if (limits.MaxEmployees.HasValue)
+    {
+        var approvedCount = await (from empItem in db.Employees
+                                   join uItem in db.Users on empItem.EmployeeId equals uItem.UserId
+                                   where empItem.CompanyId == targetCompanyId && uItem.ApprovalStatus == "Approved"
+                                   select empItem).CountAsync();
+        if (approvedCount >= limits.MaxEmployees.Value)
+        {
+            return Results.BadRequest(new
+            {
+                message = $"Cannot approve employee: your organization has reached the limit of {limits.MaxEmployees.Value} employees on the {limits.Tier} tier. Upgrade to {(limits.Tier == "Free" ? "Professional ($15/mo) or Enterprise ($29/mo)" : "Enterprise ($29/mo)")} in Billing & Plans to expand your workforce capacity.",
+                code = "TIER_LIMIT_EXCEEDED",
+                tier = limits.Tier,
+                current = approvedCount,
+                max = limits.MaxEmployees.Value,
+                resource = "Employees"
+            });
+        }
+    }
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId && u.Role == "Employee");
     if (user == null) return Results.NotFound(new { message = "Employee user not found." });
 
@@ -1314,6 +1358,25 @@ app.MapPost("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princi
     }
 
     int companyId = auth.IsCompany ? auth.CompanyId!.Value : (dto.CompanyId > 0 ? dto.CompanyId : 1);
+
+    // Check tier limits for company
+    var limits = await GetCompanyTierLimitsAsync(db, companyId);
+    if (limits.MaxProjects.HasValue)
+    {
+        var existingProjectsCount = await db.Projects.CountAsync(p => p.CompanyId == companyId);
+        if (existingProjectsCount >= limits.MaxProjects.Value)
+        {
+            return Results.BadRequest(new
+            {
+                message = $"Your organization has reached the limit of {limits.MaxProjects.Value} {(limits.MaxProjects.Value == 1 ? "project" : "projects")} on the {limits.Tier} tier. Upgrade to {(limits.Tier == "Free" ? "Professional ($15/mo) or Enterprise ($29/mo)" : "Enterprise ($29/mo)")} in Billing & Plans to create more projects.",
+                code = "TIER_LIMIT_EXCEEDED",
+                tier = limits.Tier,
+                current = existingProjectsCount,
+                max = limits.MaxProjects.Value,
+                resource = "Projects"
+            });
+        }
+    }
 
     var project = new Project
     {
@@ -2125,11 +2188,13 @@ app.MapGet("/api/subscription/plans", () =>
         {
             Id = "Free",
             Name = "Community Edition",
-            Tagline = "Essential ERP tools for small engineering squads",
+            Tagline = "Essential ERP tools for small squads (1 project & up to 10 employees)",
             MonthlyPrice = 0m,
             YearlyPrice = 0m,
             Features = new[]
             {
+                "Limit: 1 Active Project",
+                "Limit: Up to 10 Employees",
                 "Full 3-Tier RBC Enterprise Access",
                 "Standard Kanban Sprint Boards",
                 "Expense Claim Submission & Tracking",
@@ -2143,13 +2208,14 @@ app.MapGet("/api/subscription/plans", () =>
         {
             Id = "Pro",
             Name = "Professional Tier",
-            Tagline = "Accelerate workforce scale & high-velocity project delivery",
-            MonthlyPrice = 29m,
-            YearlyPrice = 290m,
+            Tagline = "Accelerate workforce scale: up to 5 projects & 30 team seats",
+            MonthlyPrice = 15m,
+            YearlyPrice = 150m,
             Features = new[]
             {
+                "Limit: Up to 5 Active Projects",
+                "Limit: Up to 30 Employees",
                 "Everything in Community Free",
-                "Unlimited Team Member Seats",
                 "Priority Financial CSV & Ledger Exports",
                 "Extended 1-Year Audit Log Retention",
                 "Sprint Velocity & Analytics Insights",
@@ -2162,14 +2228,15 @@ app.MapGet("/api/subscription/plans", () =>
         {
             Id = "Enterprise",
             Name = "Enterprise Suite",
-            Tagline = "Advanced governance, custom SLA & global financial operations",
-            MonthlyPrice = 99m,
-            YearlyPrice = 990m,
+            Tagline = "Advanced governance, unlimited scale & global financial operations",
+            MonthlyPrice = 29m,
+            YearlyPrice = 290m,
             Features = new[]
             {
+                "Unlimited Projects (No Limits)",
+                "Unlimited Employees (No Limits)",
                 "Everything in Professional Tier",
                 "Unlimited Multi-Department Allocations",
-                "AI Workforce & Predictive Analytics",
                 "Dedicated System Security SLA",
                 "Custom Automated Webhook Integrations",
                 "Elite Enterprise Tenant Status"
@@ -2216,11 +2283,26 @@ app.MapGet("/api/subscription/current", async (GrindSetDbContext db, ClaimsPrinc
         .Take(10)
         .ToListAsync();
 
+    var limits = await GetCompanyTierLimitsAsync(db, compId);
+    var projectsCount = await db.Projects.CountAsync(p => p.CompanyId == compId);
+    var employeesCount = await (from empItem in db.Employees
+                                join uItem in db.Users on empItem.EmployeeId equals uItem.UserId
+                                where empItem.CompanyId == compId && uItem.ApprovalStatus == "Approved"
+                                select empItem).CountAsync();
+
     return Results.Ok(new
     {
         subscription = sub,
         companyName = company?.CompanyName ?? "Organization",
-        invoices = invoices
+        invoices = invoices,
+        usage = new
+        {
+            tier = limits.Tier,
+            projectsCount = projectsCount,
+            maxProjects = limits.MaxProjects,
+            employeesCount = employeesCount,
+            maxEmployees = limits.MaxEmployees
+        }
     });
 });
 
@@ -2249,8 +2331,8 @@ app.MapPost("/api/subscription/checkout", async (GrindSetDbContext db, ClaimsPri
 
     decimal price = targetTier switch
     {
-        "Pro" => targetCycle == "Yearly" ? 290.00m : 29.00m,
-        "Enterprise" => targetCycle == "Yearly" ? 990.00m : 99.00m,
+        "Pro" => targetCycle == "Yearly" ? 150.00m : 15.00m,
+        "Enterprise" => targetCycle == "Yearly" ? 290.00m : 29.00m,
         _ => 0.00m
     };
 
@@ -2415,6 +2497,19 @@ static async Task<AuthUserContext> GetAuthContextAsync(ClaimsPrincipal? principa
     return new AuthUserContext(true, userId, role, companyId, employeeId);
 }
 
+static async Task<TierLimits> GetCompanyTierLimitsAsync(GrindSetDbContext db, int companyId)
+{
+    var sub = await db.Subscriptions.FirstOrDefaultAsync(s => s.CompanyId == companyId);
+    string tier = (sub != null && sub.Status == "Active") ? sub.PlanTier : "Free";
+
+    return tier switch
+    {
+        "Pro" => new TierLimits("Pro", 5, 30),
+        "Enterprise" => new TierLimits("Enterprise", null, null),
+        _ => new TierLimits("Free", 1, 10)
+    };
+}
+
 // DTO Records
 public record EmployeeDto(string Email, string FullName, string Designation, decimal HourlyRate);
 public record TransactionDto(int AccountId, int LoggedByEmployeeId, string Type, decimal Amount);
@@ -2433,6 +2528,7 @@ public record ExpenseClaimDto(int AccountId, int EmployeeId, string Type, decima
 public record SubscriptionCheckoutDto(string PlanTier, string BillingCycle, string? CardholderName, string? CardLast4, string? PaymentMethodToken);
 public record ForgotPasswordDto(string Email);
 public record ResetPasswordDto(string Token, string NewPassword);
+public record TierLimits(string Tier, int? MaxProjects, int? MaxEmployees);
 
 // Auth Context
 public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int? CompanyId, int? EmployeeId)
@@ -2441,5 +2537,3 @@ public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int
     public bool IsCompany => Role == "Company";
     public bool IsEmployee => Role == "Employee";
 }
-
-

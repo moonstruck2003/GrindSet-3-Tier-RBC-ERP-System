@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, X, FolderKanban, Users, Coins, CheckSquare, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Plus, X, FolderKanban, Users, Coins, CheckSquare, AlertCircle, CheckCircle2, Loader2, Zap } from 'lucide-react';
 import { api } from '../config/api';
 
 export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task', onItemCreated, lightMode }) {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(initialTab); // 'task' | 'project' | 'employee' | 'expense'
 
   // Data for Dropdowns
@@ -211,8 +213,48 @@ export default function GlobalCreateModal({ isOpen, onClose, initialTab = 'task'
         {/* Modal Body */}
         <div style={{ padding: 24, maxHeight: '70vh', overflowY: 'auto' }}>
           {error && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10, background: 'rgba(255,86,48,0.12)', border: '1px solid rgba(255,86,48,0.3)', color: '#FF5630', fontSize: 12, marginBottom: 16 }}>
-              <AlertCircle style={{ width: 16, height: 16 }} /> {error}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: '12px 14px',
+              borderRadius: 10,
+              background: 'rgba(255,86,48,0.12)',
+              border: '1px solid rgba(255,86,48,0.3)',
+              color: '#FF5630',
+              fontSize: 12,
+              marginBottom: 16
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }} />
+                <span>{error}</span>
+              </div>
+              {(error.toLowerCase().includes('tier') || error.toLowerCase().includes('upgrade') || error.toLowerCase().includes('limit')) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    navigate('/billing');
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    background: '#FF5630',
+                    color: '#FFF',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    border: 'none',
+                    cursor: 'pointer',
+                    marginTop: 4
+                  }}
+                >
+                  <Zap style={{ width: 12, height: 12 }} /> Upgrade in Billing & Plans &rarr;
+                </button>
+              )}
             </div>
           )}
 
