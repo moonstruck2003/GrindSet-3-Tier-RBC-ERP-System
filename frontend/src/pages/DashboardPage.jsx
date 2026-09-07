@@ -182,31 +182,38 @@ export default function DashboardPage({ lightMode }) {
                 </tr>
               </thead>
               <tbody>
-                {pendingEmployees.map(emp => (
-                  <tr key={emp.EmployeeId}>
-                    <td style={{ fontWeight: 700, color: T.textPri }}>{emp.FullName}</td>
-                    <td style={{ fontSize: 12 }}>{emp.Email}</td>
-                    <td>{emp.Designation}</td>
-                    <td style={{ fontWeight: 700, color: '#4C9AFF' }}>${emp.HourlyRate}/hr</td>
-                    <td><span className="pill pill-gold">Pending Company Approval</span></td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                        <button
-                          onClick={() => handleApproveEmployee(emp.EmployeeId)}
-                          style={{ padding: '6px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #36B37E, #00875A)', color: 'white', fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-                        >
-                          <CheckCircle2 style={{ width: 14, height: 14 }} /> Approve Access
-                        </button>
-                        <button
-                          onClick={() => handleRejectEmployee(emp.EmployeeId)}
-                          style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(255,86,48,0.15)', color: '#FF5630', fontWeight: 700, fontSize: 12, border: '1px solid rgba(255,86,48,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-                        >
-                          <XCircle style={{ width: 14, height: 14 }} /> Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {pendingEmployees.map(emp => {
+                  const empId = emp.employeeId ?? emp.EmployeeId;
+                  const name = emp.fullName || emp.FullName || 'Unnamed Employee';
+                  const email = emp.email || emp.Email || '';
+                  const designation = emp.designation || emp.Designation || 'Employee';
+                  const rate = emp.hourlyRate ?? emp.HourlyRate ?? 0;
+                  return (
+                    <tr key={empId}>
+                      <td style={{ fontWeight: 700, color: T.textPri }}>{name}</td>
+                      <td style={{ fontSize: 12 }}>{email}</td>
+                      <td>{designation}</td>
+                      <td style={{ fontWeight: 700, color: '#4C9AFF' }}>${rate}/hr</td>
+                      <td><span className="pill pill-gold">Pending Company Approval</span></td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                          <button
+                            onClick={() => handleApproveEmployee(empId)}
+                            style={{ padding: '6px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #36B37E, #00875A)', color: 'white', fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <CheckCircle2 style={{ width: 14, height: 14 }} /> Approve Access
+                          </button>
+                          <button
+                            onClick={() => handleRejectEmployee(empId)}
+                            style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(255,86,48,0.15)', color: '#FF5630', fontWeight: 700, fontSize: 12, border: '1px solid rgba(255,86,48,0.3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <XCircle style={{ width: 14, height: 14 }} /> Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
