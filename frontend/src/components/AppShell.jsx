@@ -56,7 +56,7 @@ export default function AppShell({ children, lightMode, setLightMode }) {
   const [notifCount, setNotifCount] = useState(0);
 
   const location = useLocation();
-  const isLanding = location.pathname === '/';
+  const isLanding = location.pathname === '/' || location.pathname === '/explore';
   const T = theme(lightMode);
 
   const refreshNotificationBadge = async (u) => {
