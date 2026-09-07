@@ -225,4 +225,36 @@ namespace GrindSet.Api.Models
         public int StoryPoints { get; set; } = 3;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
+
+    public class CompanySubscription
+    {
+        [Key]
+        public int SubscriptionId { get; set; }
+        public int CompanyId { get; set; }
+        public string PlanTier { get; set; } = "Free"; // Free, Pro, Enterprise
+        public string BillingCycle { get; set; } = "Monthly"; // Monthly, Yearly
+        public decimal Price { get; set; } = 0.00m;
+        public string Status { get; set; } = "Active"; // Active, Cancelled
+        public string PaymentMethod { get; set; } = "Free Plan";
+        public string? StripeCustomerId { get; set; }
+        public string? StripeSubscriptionId { get; set; }
+        public DateTime CurrentPeriodStart { get; set; } = DateTime.UtcNow;
+        public DateTime CurrentPeriodEnd { get; set; } = DateTime.UtcNow.AddMonths(1);
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public class SubscriptionInvoice
+    {
+        [Key]
+        public int InvoiceId { get; set; }
+        public int CompanyId { get; set; }
+        public string InvoiceNumber { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string Currency { get; set; } = "USD";
+        public string PlanName { get; set; } = string.Empty;
+        public string Status { get; set; } = "Paid";
+        public string PaymentMethod { get; set; } = "Stripe (Visa •••• 4242)";
+        public DateTime IssuedAt { get; set; } = DateTime.UtcNow;
+        public string? ReceiptUrl { get; set; }
+    }
 }

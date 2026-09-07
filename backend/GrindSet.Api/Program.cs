@@ -1928,6 +1928,250 @@ app.MapGet("/api/finance/export/csv", async (GrindSetDbContext db, ClaimsPrincip
     return Results.Text(sb.ToString(), "text/csv");
 });
 
+// ==========================================
+// 💳 SUBSCRIPTION & STRIPE BILLING ENDPOINTS
+// ==========================================
+
+// GET /api/subscription/plans
+app.MapGet("/api/subscription/plans", () =>
+{
+    var plans = new[]
+    {
+        new
+        {
+            Id = "Free",
+            Name = "Community Edition",
+            Tagline = "Essential ERP tools for small engineering squads",
+            MonthlyPrice = 0m,
+            YearlyPrice = 0m,
+            Features = new[]
+            {
+                "Full 3-Tier RBC Enterprise Access",
+                "Standard Kanban Sprint Boards",
+                "Expense Claim Submission & Tracking",
+                "Cross-Department Budget Allocation",
+                "Standard Audit Log Access"
+            },
+            Highlight = false,
+            Badge = "Current Free Tier"
+        },
+        new
+        {
+            Id = "Pro",
+            Name = "Professional Tier",
+            Tagline = "Accelerate workforce scale & high-velocity project delivery",
+            MonthlyPrice = 29m,
+            YearlyPrice = 290m,
+            Features = new[]
+            {
+                "Everything in Community Free",
+                "Unlimited Team Member Seats",
+                "Priority Financial CSV & Ledger Exports",
+                "Extended 1-Year Audit Log Retention",
+                "Sprint Velocity & Analytics Insights",
+                "Verified Pro Organization Badge"
+            },
+            Highlight = true,
+            Badge = "Most Popular"
+        },
+        new
+        {
+            Id = "Enterprise",
+            Name = "Enterprise Suite",
+            Tagline = "Advanced governance, custom SLA & global financial operations",
+            MonthlyPrice = 99m,
+            YearlyPrice = 990m,
+            Features = new[]
+            {
+                "Everything in Professional Tier",
+                "Unlimited Multi-Department Allocations",
+                "AI Workforce & Predictive Analytics",
+                "Dedicated System Security SLA",
+                "Custom Automated Webhook Integrations",
+                "Elite Enterprise Tenant Status"
+            },
+            Highlight = false,
+            Badge = "Full Power"
+        }
+    };
+    return Results.Ok(plans);
+});
+
+// GET /api/subscription/current
+app.MapGet("/api/subscription/current", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+
+    var sub = await db.Subscriptions.FirstOrDefaultAsync(s => s.CompanyId == compId);
+    if (sub == null)
+    {
+        sub = new CompanySubscription
+        {
+            CompanyId = compId,
+            PlanTier = "Free",
+            BillingCycle = "Monthly",
+            Price = 0.00m,
+            Status = "Active",
+            PaymentMethod = "Community Free Plan",
+            CurrentPeriodStart = DateTime.UtcNow,
+            CurrentPeriodEnd = DateTime.UtcNow.AddYears(1),
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Subscriptions.Add(sub);
+        await db.SaveChangesAsync();
+    }
+
+    var company = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == compId);
+    var invoices = await db.SubscriptionInvoices
+        .Where(i => i.CompanyId == compId)
+        .OrderByDescending(i => i.IssuedAt)
+        .Take(10)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        subscription = sub,
+        companyName = company?.CompanyName ?? "Organization",
+        invoices = invoices
+    });
+});
+
+// POST /api/subscription/checkout
+app.MapPost("/api/subscription/checkout", async (GrindSetDbContext db, ClaimsPrincipal principal, SubscriptionCheckoutDto dto) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsCompany && !auth.IsAdmin) return Results.Forbid();
+
+    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+    var company = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == compId);
+
+    var targetTier = dto.PlanTier switch
+    {
+        "Pro" => "Pro",
+        "Enterprise" => "Enterprise",
+        _ => "Free"
+    };
+
+    var targetCycle = dto.BillingCycle switch
+    {
+        "Yearly" => "Yearly",
+        _ => "Monthly"
+    };
+
+    decimal price = targetTier switch
+    {
+        "Pro" => targetCycle == "Yearly" ? 290.00m : 29.00m,
+        "Enterprise" => targetCycle == "Yearly" ? 990.00m : 99.00m,
+        _ => 0.00m
+    };
+
+    var sub = await db.Subscriptions.FirstOrDefaultAsync(s => s.CompanyId == compId);
+    if (sub == null)
+    {
+        sub = new CompanySubscription
+        {
+            CompanyId = compId
+        };
+        db.Subscriptions.Add(sub);
+    }
+
+    sub.PlanTier = targetTier;
+    sub.BillingCycle = targetCycle;
+    sub.Price = price;
+    sub.Status = "Active";
+    sub.CurrentPeriodStart = DateTime.UtcNow;
+    sub.CurrentPeriodEnd = targetCycle == "Yearly" ? DateTime.UtcNow.AddYears(1) : DateTime.UtcNow.AddMonths(1);
+
+    string last4 = string.IsNullOrWhiteSpace(dto.CardLast4) ? "4242" : dto.CardLast4.Trim();
+    sub.PaymentMethod = targetTier == "Free" ? "Community Free Plan" : $"Stripe (Visa •••• {last4})";
+
+    // Generate Subscription Invoice if paid tier
+    SubscriptionInvoice? invoice = null;
+    if (price > 0)
+    {
+        invoice = new SubscriptionInvoice
+        {
+            CompanyId = compId,
+            InvoiceNumber = $"INV-{DateTime.UtcNow:yyyyMM}-{Random.Shared.Next(1000, 9999)}",
+            Amount = price,
+            Currency = "USD",
+            PlanName = $"{targetTier} Tier ({targetCycle})",
+            Status = "Paid",
+            PaymentMethod = sub.PaymentMethod,
+            IssuedAt = DateTime.UtcNow,
+            ReceiptUrl = $"#receipt-{Guid.NewGuid():N}"
+        };
+        db.SubscriptionInvoices.Add(invoice);
+    }
+
+    // Audit Log
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = auth.UserId,
+        Action = "COMPANY_SUBSCRIBE",
+        TargetEntity = $"Subscription:{targetTier} ({targetCycle}) for {company?.CompanyName ?? "Company"}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        message = $"Successfully subscribed to {targetTier} Plan!",
+        subscription = sub,
+        invoice = invoice
+    });
+});
+
+// POST /api/subscription/cancel
+app.MapPost("/api/subscription/cancel", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsCompany && !auth.IsAdmin) return Results.Forbid();
+
+    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+    var sub = await db.Subscriptions.FirstOrDefaultAsync(s => s.CompanyId == compId);
+    if (sub == null) return Results.NotFound(new { message = "No active subscription found." });
+
+    sub.Status = "Cancelled";
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = auth.UserId,
+        Action = "COMPANY_CANCEL_SUBSCRIPTION",
+        TargetEntity = $"Subscription:Cancelled {sub.PlanTier} renewal for Company #{compId}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        message = "Subscription renewal cancelled. You will retain current tier access through the end of the billing period.",
+        subscription = sub
+    });
+});
+
+// GET /api/subscription/invoices
+app.MapGet("/api/subscription/invoices", async (GrindSetDbContext db, ClaimsPrincipal principal) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+    var invoices = await db.SubscriptionInvoices
+        .Where(i => i.CompanyId == compId)
+        .OrderByDescending(i => i.IssuedAt)
+        .ToListAsync();
+
+    return Results.Ok(invoices);
+});
+
 app.Run();
 
 // Auth Helpers
@@ -2000,6 +2244,7 @@ public record TaskUpdateDto(int? ProjectId, int? AssigneeId, string? Title, stri
 public record AccountCreateDto(int ProjectId, string AccountName, decimal AllocatedBudget);
 public record FundReallocateDto(int ProjectId, int SourceAccountId, int TargetAccountId, decimal Amount, string Reason);
 public record ExpenseClaimDto(int AccountId, int EmployeeId, string Type, decimal Amount, string? Note);
+public record SubscriptionCheckoutDto(string PlanTier, string BillingCycle, string? CardholderName, string? CardLast4, string? PaymentMethodToken);
 
 // Auth Context
 public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int? CompanyId, int? EmployeeId)

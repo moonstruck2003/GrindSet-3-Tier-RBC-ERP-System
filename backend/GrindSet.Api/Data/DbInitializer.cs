@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Microsoft.EntityFrameworkCore;
 using GrindSet.Api.Models;
 
 namespace GrindSet.Api.Data
@@ -117,6 +118,54 @@ namespace GrindSet.Api.Data
                     new TaskItem { ProjectId = proj3.ProjectId, AssigneeId = empUser2.UserId, Title = "Design Offline Timesheet Mobile Sync", Description = "Implement local SQLite sync for mobile app.", Priority = "Medium", Status = "To Do", StoryPoints = 5 }
                 );
 
+                context.SaveChanges();
+            }
+
+            // Ensure Subscriptions and SubscriptionInvoices tables exist in SQLite
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""Subscriptions"" (
+                    ""SubscriptionId"" INTEGER NOT NULL CONSTRAINT ""PK_Subscriptions"" PRIMARY KEY AUTOINCREMENT,
+                    ""CompanyId"" INTEGER NOT NULL,
+                    ""PlanTier"" TEXT NOT NULL,
+                    ""BillingCycle"" TEXT NOT NULL,
+                    ""Price"" TEXT NOT NULL,
+                    ""Status"" TEXT NOT NULL,
+                    ""PaymentMethod"" TEXT NOT NULL,
+                    ""StripeCustomerId"" TEXT NULL,
+                    ""StripeSubscriptionId"" TEXT NULL,
+                    ""CurrentPeriodStart"" TEXT NOT NULL,
+                    ""CurrentPeriodEnd"" TEXT NOT NULL,
+                    ""CreatedAt"" TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS ""SubscriptionInvoices"" (
+                    ""InvoiceId"" INTEGER NOT NULL CONSTRAINT ""PK_SubscriptionInvoices"" PRIMARY KEY AUTOINCREMENT,
+                    ""CompanyId"" INTEGER NOT NULL,
+                    ""InvoiceNumber"" TEXT NOT NULL,
+                    ""Amount"" TEXT NOT NULL,
+                    ""Currency"" TEXT NOT NULL,
+                    ""PlanName"" TEXT NOT NULL,
+                    ""Status"" TEXT NOT NULL,
+                    ""PaymentMethod"" TEXT NOT NULL,
+                    ""IssuedAt"" TEXT NOT NULL,
+                    ""ReceiptUrl"" TEXT NULL
+                );
+            ");
+
+            // Seed initial subscription for Company if missing
+            if (!context.Subscriptions.Any())
+            {
+                context.Subscriptions.Add(new CompanySubscription
+                {
+                    CompanyId = 2,
+                    PlanTier = "Free",
+                    BillingCycle = "Monthly",
+                    Price = 0.00m,
+                    Status = "Active",
+                    PaymentMethod = "Community Free Plan",
+                    CurrentPeriodStart = DateTime.UtcNow,
+                    CurrentPeriodEnd = DateTime.UtcNow.AddYears(1),
+                    CreatedAt = DateTime.UtcNow
+                });
                 context.SaveChanges();
             }
         }

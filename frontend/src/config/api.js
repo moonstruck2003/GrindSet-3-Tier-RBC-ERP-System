@@ -93,6 +93,12 @@ export const api = {
   approveExpense:     (id) => apiFetch(`/api/finance/approve-expense/${id}`, { method: 'POST' }),
   rejectExpense:      (id) => apiFetch(`/api/finance/reject-expense/${id}`, { method: 'POST' }),
   exportCsvUrl:       () => `${API_BASE_URL}/api/finance/export/csv`,
+
+  subscriptionPlans:    () => apiFetch('/api/subscription/plans'),
+  currentSubscription:  () => apiFetch('/api/subscription/current'),
+  checkoutSubscription: (data) => apiFetch('/api/subscription/checkout', { method: 'POST', body: JSON.stringify(data) }),
+  cancelSubscription:   () => apiFetch('/api/subscription/cancel', { method: 'POST' }),
+  subscriptionInvoices: () => apiFetch('/api/subscription/invoices'),
 };
 
 // Legacy helpers kept for App.jsx compatibility

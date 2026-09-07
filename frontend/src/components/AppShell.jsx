@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, FolderKanban, Coins, ShieldAlert,
-  Sun, Moon, LogOut, ChevronRight, Activity, Building2, Shield, UserCheck, Plus, Search, Bell, Command
+  Sun, Moon, LogOut, ChevronRight, Activity, Building2, Shield, UserCheck, Plus, Search, Bell, Command, CreditCard
 } from 'lucide-react';
 import { api } from '../config/api';
 import GrindsetLogoNodes from './GrindsetLogoNodes';
@@ -142,6 +142,7 @@ export default function AppShell({ children, lightMode, setLightMode }) {
     { path: '/projects', icon: FolderKanban, label: 'Projects', accent: '#FFDA75' },
     { path: '/finance', icon: Coins, label: 'Finance & Ledger', accent: '#BF9AFF' },
     { path: '/audit', icon: ShieldAlert, label: 'Security Audit Logs', accent: '#FF8F73' },
+    { path: '/billing', icon: CreditCard, label: 'Billing & Plans', accent: '#635BFF' },
   ];
 
   if (userRole === 'Admin') {
@@ -150,6 +151,7 @@ export default function AppShell({ children, lightMode, setLightMode }) {
       { path: '/workforce', icon: Users, label: 'Employee Oversight', accent: '#57D9A3' },
       { path: '/projects', icon: Building2, label: 'Company Directory', accent: '#FFDA75' },
       { path: '/audit', icon: ShieldAlert, label: 'System Audit Logs', accent: '#FF8F73' },
+      { path: '/billing', icon: CreditCard, label: 'Subscription Tiers', accent: '#635BFF' },
     ];
   } else if (userRole === 'Employee') {
     navItems = [
