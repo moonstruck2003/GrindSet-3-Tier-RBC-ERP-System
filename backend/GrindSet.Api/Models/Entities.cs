@@ -14,6 +14,7 @@ namespace GrindSet.Api.Models
         public string PasswordHash { get; set; } = string.Empty;
         [Required]
         public string Role { get; set; } = "Employee"; // Admin, Company, Employee
+        public int? CompanyId { get; set; } // Nullable: Links owner or employee to their registered company
         public bool IsActive { get; set; } = true;
         public string ApprovalStatus { get; set; } = "Approved"; // Approved, PendingAdmin, PendingCompany, Rejected
         public string? ReportedNote { get; set; }

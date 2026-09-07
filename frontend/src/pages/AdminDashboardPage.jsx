@@ -207,9 +207,23 @@ export default function AdminDashboardPage({ lightMode }) {
               <tbody>
                 {pendingCompanies.map(c => (
                   <tr key={c.companyId}>
-                    <td style={{ fontWeight: 700, color: textPri }}>{c.companyName}</td>
+                    <td>
+                      <div style={{ fontWeight: 700, color: textPri }}>{c.companyName}</div>
+                      {c.isExistingCompanyClaim ? (
+                        <span className="pill pill-blue" style={{ fontSize: 10, marginTop: 4, display: 'inline-block' }}>
+                          Claiming Existing Workspace
+                        </span>
+                      ) : (
+                        <span className="pill pill-green" style={{ fontSize: 10, marginTop: 4, display: 'inline-block' }}>
+                          New Workspace Setup
+                        </span>
+                      )}
+                    </td>
                     <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>{c.registrationNo}</td>
-                    <td>{c.email}</td>
+                    <td>
+                      <div style={{ fontWeight: 600, color: textPri }}>{c.fullName || 'Applicant'}</div>
+                      <div style={{ fontSize: 11, color: textMut }}>{c.email}</div>
+                    </td>
                     <td>{c.industry}</td>
                     <td><span className="pill pill-gold">Pending Admin</span></td>
                     <td style={{ textAlign: 'right' }}>
@@ -217,8 +231,9 @@ export default function AdminDashboardPage({ lightMode }) {
                         <button
                           onClick={() => handleApproveCompany(c.companyId)}
                           style={{ padding: '6px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #36B37E, #00875A)', color: 'white', fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                          title="Verify and activate Company Owner account"
                         >
-                          <CheckCircle2 style={{ width: 14, height: 14 }} /> Approve Company
+                          <CheckCircle2 style={{ width: 14, height: 14 }} /> Verify & Approve
                         </button>
                         <button
                           onClick={() => handleRejectCompany(c.companyId)}

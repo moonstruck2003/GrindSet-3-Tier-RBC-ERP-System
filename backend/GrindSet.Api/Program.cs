@@ -649,11 +649,11 @@ app.MapGet("/api/auth/me", async (GrindSetDbContext db, ClaimsPrincipal principa
     }
     else if (user.Role == "Company")
     {
-        var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == user.UserId);
+        compId = user.CompanyId ?? user.UserId;
+        var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == compId);
         if (comp != null)
         {
             displayName = comp.CompanyName;
-            compId = comp.CompanyId;
         }
     }
     else if (user.Role == "Admin")
@@ -722,9 +722,18 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
         _ => "Employee"
     };
 
+    bool isExistingCompanyClaim = false;
+    if (dbRole == "Company" && dto.CompanyId.HasValue)
+    {
+        if (await db.Companies.AnyAsync(c => c.CompanyId == dto.CompanyId.Value))
+        {
+            isExistingCompanyClaim = true;
+        }
+    }
+
     string initialApproval = dbRole switch
     {
-        "Company" => "Approved",
+        "Company" => isExistingCompanyClaim ? "PendingAdmin" : "Approved",
         "Employee" => "PendingCompany",
         _ => "Approved"
     };
@@ -734,8 +743,10 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
         Email = cleanEmail,
         PasswordHash = HashPassword(dto.Password),
         Role = dbRole,
+        CompanyId = isExistingCompanyClaim ? dto.CompanyId.Value : null,
         IsActive = true,
-        ApprovalStatus = initialApproval
+        ApprovalStatus = initialApproval,
+        ReportedNote = dto.FullName.Trim()
     };
 
     db.Users.Add(user);
@@ -747,13 +758,22 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
     if (dbRole == "Company")
     {
         // Check if claiming/joining an existing company tenancy
-        if (dto.CompanyId.HasValue && await db.Companies.AnyAsync(c => c.CompanyId == dto.CompanyId.Value))
+        if (isExistingCompanyClaim)
         {
-            compId = dto.CompanyId.Value;
+            compId = dto.CompanyId!.Value;
+            user.CompanyId = compId;
+            db.SecurityAuditLogs.Add(new SecurityAuditLog
+            {
+                UserId = user.UserId,
+                Action = "COMPANY_OWNER_CLAIM_PENDING_ADMIN",
+                TargetEntity = $"User:{user.Email} requested ownership of existing Company ID:{compId}",
+                EventTime = DateTime.UtcNow
+            });
         }
         else
         {
             compId = user.UserId;
+            user.CompanyId = user.UserId;
             var companyName = string.IsNullOrWhiteSpace(dto.CompanyName) ? $"{displayName}'s Organization" : dto.CompanyName.Trim();
             var company = new Company
             {
@@ -894,11 +914,11 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
     }
     else if (user.Role == "Company")
     {
-        var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == user.UserId);
+        compId = user.CompanyId ?? user.UserId;
+        var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == compId);
         if (comp != null)
         {
             displayName = comp.CompanyName;
-            compId = comp.CompanyId;
         }
     }
     else if (user.Role == "Admin")
@@ -1125,20 +1145,32 @@ app.MapGet("/api/admin/pending-companies", async (GrindSetDbContext db, ClaimsPr
     if (!auth.IsAuthenticated) return Results.Unauthorized();
     if (!auth.IsAdmin) return Results.Forbid();
 
-    var pending = await (from c in db.Companies
-                         join u in db.Users on c.CompanyId equals u.UserId
-                         where u.ApprovalStatus == "PendingAdmin"
-                         select new
-                         {
-                             CompanyId = c.CompanyId,
-                             CompanyName = c.CompanyName,
-                             Email = u.Email,
-                             RegistrationNo = c.RegistrationNo,
-                             Industry = c.Industry,
-                             LicenseStatus = c.LicenseStatus,
-                             ApprovalStatus = u.ApprovalStatus
-                         }).ToListAsync();
-    return Results.Ok(pending);
+    var pendingUsers = await db.Users
+        .Where(u => u.Role == "Company" && u.ApprovalStatus == "PendingAdmin")
+        .ToListAsync();
+
+    var pendingList = new List<object>();
+    foreach (var u in pendingUsers)
+    {
+        int targetCompId = u.CompanyId ?? u.UserId;
+        var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == targetCompId);
+
+        pendingList.Add(new
+        {
+            companyId = u.UserId, // Unique identifier used by approve/reject buttons
+            targetCompanyId = targetCompId,
+            companyName = comp?.CompanyName ?? (string.IsNullOrWhiteSpace(u.ReportedNote) ? "Registered Workspace" : u.ReportedNote),
+            email = u.Email,
+            fullName = u.ReportedNote ?? u.Email,
+            registrationNo = comp?.RegistrationNo ?? "REG-PENDING",
+            industry = comp?.Industry ?? "Enterprise Technology",
+            licenseStatus = comp?.LicenseStatus ?? "PendingAdminApproval",
+            approvalStatus = u.ApprovalStatus,
+            isExistingCompanyClaim = comp != null && comp.CompanyId != u.UserId
+        });
+    }
+
+    return Results.Ok(pendingList);
 });
 
 // POST /api/admin/approve-company/{companyId}
@@ -1148,24 +1180,30 @@ app.MapPost("/api/admin/approve-company/{companyId:int}", async (GrindSetDbConte
     if (!auth.IsAuthenticated) return Results.Unauthorized();
     if (!auth.IsAdmin) return Results.Forbid();
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company");
-    if (user == null) return Results.NotFound(new { message = "Company user not found." });
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company")
+               ?? await db.Users.FirstOrDefaultAsync(u => u.CompanyId == companyId && u.Role == "Company" && u.ApprovalStatus == "PendingAdmin");
+
+    if (user == null) return Results.NotFound(new { message = "Company registration applicant not found." });
 
     user.ApprovalStatus = "Approved";
 
-    var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId);
-    if (comp != null) comp.LicenseStatus = "Active";
+    int targetCompId = user.CompanyId ?? user.UserId;
+    var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == targetCompId);
+    if (comp != null)
+    {
+        comp.LicenseStatus = "Active";
+    }
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
         UserId = auth.UserId,
-        Action = "ADMIN_APPROVE_COMPANY",
-        TargetEntity = $"Company:{comp?.CompanyName ?? user.Email}",
+        Action = "ADMIN_APPROVE_COMPANY_OWNER",
+        TargetEntity = $"Owner:{user.Email} approved for Company:{comp?.CompanyName ?? targetCompId.ToString()}",
         EventTime = DateTime.UtcNow
     });
 
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Company approved successfully!", companyId, approvalStatus = "Approved" });
+    return Results.Ok(new { message = "Company owner approved successfully!", companyId = user.UserId, approvalStatus = "Approved" });
 });
 
 // POST /api/admin/reject-company/{companyId}
@@ -1175,24 +1213,23 @@ app.MapPost("/api/admin/reject-company/{companyId:int}", async (GrindSetDbContex
     if (!auth.IsAuthenticated) return Results.Unauthorized();
     if (!auth.IsAdmin) return Results.Forbid();
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company");
-    if (user == null) return Results.NotFound(new { message = "Company user not found." });
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == companyId && u.Role == "Company")
+               ?? await db.Users.FirstOrDefaultAsync(u => u.CompanyId == companyId && u.Role == "Company" && u.ApprovalStatus == "PendingAdmin");
+
+    if (user == null) return Results.NotFound(new { message = "Company registration applicant not found." });
 
     user.ApprovalStatus = "Rejected";
-
-    var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId);
-    if (comp != null) comp.LicenseStatus = "Rejected";
 
     db.SecurityAuditLogs.Add(new SecurityAuditLog
     {
         UserId = auth.UserId,
-        Action = "ADMIN_REJECT_COMPANY",
-        TargetEntity = $"Company:{comp?.CompanyName ?? user.Email}",
+        Action = "ADMIN_REJECT_COMPANY_OWNER",
+        TargetEntity = $"Owner application rejected for User:{user.Email}",
         EventTime = DateTime.UtcNow
     });
 
     await db.SaveChangesAsync();
-    return Results.Ok(new { message = "Company rejected.", companyId, approvalStatus = "Rejected" });
+    return Results.Ok(new { message = "Company registration rejected.", companyId = user.UserId, approvalStatus = "Rejected" });
 });
 
 // POST /api/admin/block-employee/{employeeId}
@@ -2702,7 +2739,8 @@ static async Task<AuthUserContext> GetAuthContextAsync(ClaimsPrincipal? principa
     {
         if (!companyId.HasValue)
         {
-            companyId = userId;
+            var userEntity = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+            companyId = userEntity?.CompanyId ?? userId;
         }
     }
     else if (role == "Employee")
