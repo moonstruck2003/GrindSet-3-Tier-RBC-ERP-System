@@ -104,15 +104,20 @@ export default function NotificationsDrawer({ isOpen, onClose, user, lightMode, 
       if (userRole === 'Company') {
         // 1. Pending Employee Access Applications
         peRes.forEach(emp => {
+          const empId = emp.employeeId ?? emp.EmployeeId;
+          const name = emp.fullName || emp.FullName || 'Unnamed Employee';
+          const desig = emp.designation || emp.Designation || 'Employee';
+          const email = emp.email || emp.Email || '';
+          const rate = emp.hourlyRate ?? emp.HourlyRate ?? 0;
           items.push({
-            id: `emp-pending-${emp.EmployeeId}`,
+            id: `emp-pending-${empId}`,
             category: 'Employee Access Request',
-            title: `Pending Application: ${emp.FullName}`,
-            subtitle: `${emp.Designation} · ${emp.Email}`,
-            detail: `Hourly Rate: $${emp.HourlyRate}/hr · Requires Company Access Approval`,
+            title: `Pending Application: ${name}`,
+            subtitle: `${desig} · ${email}`,
+            detail: `Hourly Rate: $${rate}/hr · Requires Company Access Approval`,
             badgeType: 'gold',
             actionType: 'approve_employee',
-            actionId: emp.EmployeeId,
+            actionId: empId,
             timestamp: Date.now() - 1800000,
             icon: UserPlus
           });

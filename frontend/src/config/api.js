@@ -15,18 +15,28 @@ async function apiFetch(path, opts = {}) {
     ...opts,
   });
 
+  const txt = await res.text();
+
   if (!res.ok) {
     let msg = `API Error ${res.status}`;
-    try {
-      const errJson = await res.json();
-      if (errJson?.message) msg = errJson.message;
-    } catch {
-      const txt = await res.text();
-      if (txt) msg = txt;
+    if (txt) {
+      try {
+        const errJson = JSON.parse(txt);
+        if (errJson?.message) msg = errJson.message;
+        else msg = txt;
+      } catch {
+        msg = txt;
+      }
     }
     throw new Error(msg);
   }
-  return res.json();
+
+  if (!txt) return {};
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return txt;
+  }
 }
 
 export const api = {

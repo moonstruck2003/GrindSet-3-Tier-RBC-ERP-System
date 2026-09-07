@@ -278,18 +278,23 @@ export default function AdminDashboardPage({ lightMode }) {
             </thead>
             <tbody>
               {filteredEmployees.map(emp => {
-                const u = allUsers.find(x => x.userId === emp.EmployeeId);
+                const empId = emp.employeeId ?? emp.EmployeeId;
+                const u = allUsers.find(x => x.userId === empId);
                 const isActive = u ? u.isActive : true;
                 const appStatus = u ? u.approvalStatus : 'Approved';
                 const reportedNote = u ? u.reportedNote : null;
+                const name = emp.fullName || emp.FullName || 'Unnamed Employee';
+                const email = emp.email || emp.Email || '';
+                const designation = emp.designation || emp.Designation || 'Employee';
+                const rate = emp.hourlyRate ?? emp.HourlyRate ?? 0;
 
                 return (
-                  <tr key={emp.EmployeeId}>
-                    <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>#{emp.EmployeeId}</td>
-                    <td style={{ fontWeight: 700, color: textPri }}>{emp.FullName}</td>
-                    <td style={{ fontSize: 12 }}>{emp.Email}</td>
-                    <td>{emp.Designation}</td>
-                    <td style={{ fontWeight: 700, color: '#4C9AFF' }}>${emp.HourlyRate}/hr</td>
+                  <tr key={empId}>
+                    <td style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>#{empId}</td>
+                    <td style={{ fontWeight: 700, color: textPri }}>{name}</td>
+                    <td style={{ fontSize: 12 }}>{email}</td>
+                    <td>{designation}</td>
+                    <td style={{ fontWeight: 700, color: '#4C9AFF' }}>${rate}/hr</td>
                     <td>
                       {!isActive ? (
                         <span className="pill pill-red">Blocked</span>
@@ -311,7 +316,7 @@ export default function AdminDashboardPage({ lightMode }) {
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                         <button
-                          onClick={() => handleBlockEmployee(emp.EmployeeId)}
+                          onClick={() => handleBlockEmployee(empId)}
                           style={{
                             padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
                             background: isActive ? 'rgba(255,86,48,0.15)' : 'rgba(54,179,126,0.15)',

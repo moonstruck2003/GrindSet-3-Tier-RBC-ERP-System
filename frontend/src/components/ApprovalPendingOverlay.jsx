@@ -93,7 +93,7 @@ export default function ApprovalPendingOverlay({ user, onRefreshSession, onSignO
           color: isRejected ? '#FF5630' : '#FFAB00',
         }}>
           {isRejected ? <AlertTriangle style={{ width: 14, height: 14 }} /> : <Clock style={{ width: 14, height: 14 }} />}
-          {isRejected ? 'Access Restricted' : 'Jira Security Verification'}
+          {isRejected ? 'Access Restricted' : 'GrindSet Security Verification'}
         </div>
 
         {/* Big Icon */}
