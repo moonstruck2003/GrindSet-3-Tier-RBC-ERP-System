@@ -36,6 +36,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [devResetUrl, setDevResetUrl] = useState('');
 
   if (!isOpen) return null;
 
@@ -54,6 +55,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
     setConfirmPassword('');
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setDevResetUrl('');
     resetForm();
   };
 
@@ -166,6 +168,24 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
       } finally {
         setLoading(false);
       }
+    } else if (mode === 'forgot') {
+      if (!email.trim() || !email.includes('@')) {
+        setError('Please enter a valid email address.');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await api.forgotPassword({ email: email.trim().toLowerCase() });
+        setSuccessMsg(res.message || 'Password reset link sent! Check your inbox.');
+        if (res.devResetUrl) {
+          setDevResetUrl(res.devResetUrl);
+        }
+      } catch (err) {
+        setError(err.message || 'Failed to dispatch reset email. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     } else {
       // Login
       if (!email.trim() || !password) {
@@ -219,7 +239,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
             <div>
               <h3 style={{ fontWeight: 800, fontSize: 16, color: textPrimary, margin: 0 }}>GrindSet Access Control</h3>
               <p style={{ fontSize: 11, color: textMuted, margin: 0 }}>
-                {mode === 'signup' ? 'Create your 3-tier RBC ERP account' : 'Sign in to access your dashboard'}
+                {mode === 'signup' ? 'Create your 3-tier RBC ERP account' : mode === 'forgot' ? 'Account recovery via secure SMTP email' : 'Sign in to access your dashboard'}
               </p>
             </div>
           </div>
@@ -228,32 +248,43 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           </button>
         </div>
 
-        {/* Modal Mode Selector Tabs (Sign Up vs Sign In) */}
+        {/* Modal Mode Selector Tabs (Sign Up vs Sign In vs Recovery) */}
         <div style={{ padding: '16px 24px 0' }}>
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, padding: 4,
+            display: 'grid', gridTemplateColumns: mode === 'forgot' ? '1fr' : '1fr 1fr', gap: 6, padding: 4,
             borderRadius: 12, background: isDark ? '#172B4D' : '#F0F2F5', border: `1px solid ${border}`
           }}>
-            <button
-              type="button"
-              onClick={() => handleModeSwitch('signup')}
-              style={{
-                padding: '9px 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: 'none',
-                background: mode === 'signup' ? '#0052CC' : 'transparent',
-                color: mode === 'signup' ? 'white' : textMuted, transition: 'all .15s'
+            {mode === 'forgot' ? (
+              <div style={{
+                padding: '9px 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, textAlign: 'center',
+                background: '#0052CC', color: 'white'
               }}>
-              Create Account (Sign Up)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleModeSwitch('login')}
-              style={{
-                padding: '9px 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: 'none',
-                background: mode === 'login' ? '#0052CC' : 'transparent',
-                color: mode === 'login' ? 'white' : textMuted, transition: 'all .15s'
-              }}>
-              Sign In
-            </button>
+                🔑 Forgot Password Recovery
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleModeSwitch('signup')}
+                  style={{
+                    padding: '9px 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: 'none',
+                    background: mode === 'signup' ? '#0052CC' : 'transparent',
+                    color: mode === 'signup' ? 'white' : textMuted, transition: 'all .15s'
+                  }}>
+                  Create Account (Sign Up)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleModeSwitch('login')}
+                  style={{
+                    padding: '9px 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: 'none',
+                    background: mode === 'login' ? '#0052CC' : 'transparent',
+                    color: mode === 'login' ? 'white' : textMuted, transition: 'all .15s'
+                  }}>
+                  Sign In
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -283,31 +314,72 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           )}
 
           {/* Role selector */}
-          <div>
-            <label className="gs-label" style={{ color: textMuted, marginBottom: 6, display: 'block', fontSize: 12, fontWeight: 700 }}>
-              Select System Role (3-Tier RBAC)
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${availableRoles.length}, 1fr)`, gap: 6 }}>
-              {availableRoles.map(r => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => handleRoleQuickFill(r.id)}
-                  style={{
-                    padding: '8px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                    border: role === r.id ? '2px solid #0052CC' : `1px solid ${border}`,
-                    background: role === r.id ? (isDark ? 'rgba(0,82,204,0.25)' : 'rgba(0,82,204,0.08)') : inputBg,
-                    transition: 'all .15s'
-                  }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: role === r.id ? '#4C9AFF' : textPrimary }}>{r.label}</div>
-                  <div style={{ fontSize: 10, color: textMuted, marginTop: 2 }}>{r.badge}</div>
-                </button>
-              ))}
+          {mode !== 'forgot' && (
+            <div>
+              <label className="gs-label" style={{ color: textMuted, marginBottom: 6, display: 'block', fontSize: 12, fontWeight: 700 }}>
+                Select System Role (3-Tier RBAC)
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${availableRoles.length}, 1fr)`, gap: 6 }}>
+                {availableRoles.map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => handleRoleQuickFill(r.id)}
+                    style={{
+                      padding: '8px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                      border: role === r.id ? '2px solid #0052CC' : `1px solid ${border}`,
+                      background: role === r.id ? (isDark ? 'rgba(0,82,204,0.25)' : 'rgba(0,82,204,0.08)') : inputBg,
+                      transition: 'all .15s'
+                    }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: role === r.id ? '#4C9AFF' : textPrimary }}>{r.label}</div>
+                    <div style={{ fontSize: 10, color: textMuted, marginTop: 2 }}>{r.badge}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Fields for SIGN UP */}
-          {mode === 'signup' ? (
+          {mode === 'forgot' ? (
+            /* Fields for FORGOT PASSWORD */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <p style={{ fontSize: 13, color: textMuted, margin: 0, lineHeight: 1.5 }}>
+                Enter the email address associated with your GrindSet account. We will send a secure password reset link via SMTP.
+              </p>
+              <div>
+                <label className="gs-label" style={{ color: textMuted }}>Registered Email Address *</label>
+                <div style={{ position: 'relative' }}>
+                  <Mail className="w-4 h-4" style={{ position: 'absolute', left: 12, top: 12, color: textMuted }} />
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@grindset.io"
+                    className="gs-input"
+                    style={{ paddingLeft: 38, background: inputBg, color: textPrimary, borderColor: border }}
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {devResetUrl && (
+                <div style={{
+                  padding: '12px 14px', borderRadius: 12,
+                  background: isDark ? 'rgba(0, 82, 204, 0.2)' : 'rgba(0, 82, 204, 0.08)',
+                  border: '1px solid rgba(0, 82, 204, 0.4)'
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#4C9AFF', marginBottom: 4 }}>
+                    🚀 Developer Sandbox Shortcut (Local Test):
+                  </div>
+                  <a
+                    href={devResetUrl}
+                    onClick={() => onClose()}
+                    style={{ fontSize: 12, color: '#DEEBFF', textDecoration: 'underline', wordBreak: 'break-all' }}>
+                    Click here to open Reset Password page directly &rarr;
+                  </a>
+                </div>
+              )}
+            </div>
+          ) : mode === 'signup' ? (
             <>
               {/* Full Name */}
               <div>
@@ -562,7 +634,22 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
               </div>
 
               <div>
-                <label className="gs-label" style={{ color: textMuted }}>Password</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <label className="gs-label" style={{ color: textMuted, margin: 0 }}>Password</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setError('');
+                      setSuccessMsg('');
+                    }}
+                    style={{
+                      background: 'none', border: 'none', color: '#4C9AFF', fontSize: 11, fontWeight: 600,
+                      cursor: 'pointer', padding: 0
+                    }}>
+                    Forgot password?
+                  </button>
+                </div>
                 <div style={{ position: 'relative' }}>
                   <Lock className="w-4 h-4" style={{ position: 'absolute', left: 12, top: 12, color: textMuted }} />
                   <input
@@ -603,15 +690,27 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                {mode === 'signup' ? 'Creating Account & DB Records...' : 'Authenticating...'}
+                {mode === 'signup' ? 'Creating Account & DB Records...' : mode === 'forgot' ? 'Dispatching Reset Email...' : 'Authenticating...'}
               </>
             ) : (
               <>
-                {mode === 'signup' ? `Sign Up as ${role}` : `Sign In as ${role}`}
+                {mode === 'signup' ? `Sign Up as ${role}` : mode === 'forgot' ? 'Send Password Reset Link' : `Sign In as ${role}`}
                 <ChevronRight className="w-4 h-4" />
               </>
             )}
           </motion.button>
+
+          {mode === 'forgot' && (
+            <button
+              type="button"
+              onClick={() => handleModeSwitch('login')}
+              style={{
+                background: 'none', border: 'none', color: '#4C9AFF', fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', textAlign: 'center', padding: '6px 0'
+              }}>
+              &larr; Back to Sign In
+            </button>
+          )}
         </form>
 
       </motion.div>

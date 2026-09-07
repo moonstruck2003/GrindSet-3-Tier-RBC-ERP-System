@@ -99,6 +99,10 @@ export const api = {
   checkoutSubscription: (data) => apiFetch('/api/subscription/checkout', { method: 'POST', body: JSON.stringify(data) }),
   cancelSubscription:   () => apiFetch('/api/subscription/cancel', { method: 'POST' }),
   subscriptionInvoices: () => apiFetch('/api/subscription/invoices'),
+
+  forgotPassword:   (data) => apiFetch('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify(data) }),
+  verifyResetToken: (token) => apiFetch(`/api/auth/verify-reset-token?token=${encodeURIComponent(token)}`),
+  resetPassword:    (data) => apiFetch('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // Legacy helpers kept for App.jsx compatibility

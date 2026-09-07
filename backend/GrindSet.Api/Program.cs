@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -76,6 +77,8 @@ builder.Services.AddCors(options =>
               .AllowCredentials();
     });
 });
+
+builder.Services.AddSingleton<IEmailService, EmailService>();
 
 var app = builder.Build();
 
@@ -860,6 +863,186 @@ app.MapPost("/api/auth/login", async (GrindSetDbContext db, LoginDto dto) =>
             reportedNote = user.ReportedNote,
             fullName = displayName,
         }
+    });
+});
+
+// POST /api/auth/forgot-password - Request password reset link
+app.MapPost("/api/auth/forgot-password", async (GrindSetDbContext db, IEmailService emailService, ForgotPasswordDto dto) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.Email))
+    {
+        return Results.BadRequest(new { message = "Email is required." });
+    }
+
+    var cleanEmail = dto.Email.Trim().ToLower();
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == cleanEmail);
+    if (user == null)
+    {
+        // Safe message to prevent email enumeration
+        return Results.Ok(new 
+        { 
+            message = "If an account exists with this email address, a password reset link has been dispatched.",
+            sent = true
+        });
+    }
+
+    // Invalidate any existing pending reset tokens for this user
+    var oldResets = await db.PasswordResets
+        .Where(r => r.UserId == user.UserId && r.Status == "Pending")
+        .ToListAsync();
+    foreach (var old in oldResets)
+    {
+        old.Status = "Superseded";
+    }
+
+    // Generate cryptographically secure 32-byte hex token
+    var tokenBytes = RandomNumberGenerator.GetBytes(32);
+    var token = Convert.ToHexString(tokenBytes).ToLower();
+
+    var resetRecord = new PasswordReset
+    {
+        UserId = user.UserId,
+        ResetToken = token,
+        ExpiresAt = DateTime.UtcNow.AddHours(1),
+        Status = "Pending"
+    };
+    db.PasswordResets.Add(resetRecord);
+
+    // Resolve user display name
+    string displayName = user.Email;
+    if (user.Role == "Employee")
+    {
+        var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == user.UserId);
+        if (emp != null) displayName = emp.FullName;
+    }
+    else if (user.Role == "Company")
+    {
+        var comp = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == user.UserId);
+        if (comp != null) displayName = comp.CompanyName;
+    }
+    else if (user.Role == "Admin")
+    {
+        var adm = await db.Admins.FirstOrDefaultAsync(a => a.AdminId == user.UserId);
+        if (adm != null) displayName = adm.FullName;
+    }
+
+    // Send email via Brevo / SMTP
+    var emailResult = await emailService.SendPasswordResetEmailAsync(user.Email, displayName, token);
+
+    // Audit log
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = user.UserId,
+        Action = "PASSWORD_RESET_REQUESTED",
+        TargetEntity = $"User:{user.Email} (Token Expiry: 1hr)",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        message = "A password reset link has been dispatched to your email address.",
+        sent = true,
+        devResetToken = token,
+        devResetUrl = emailResult.ResetUrl,
+        providerMessage = emailResult.Message
+    });
+});
+
+// GET /api/auth/verify-reset-token - Validate token before showing reset form
+app.MapGet("/api/auth/verify-reset-token", async (GrindSetDbContext db, string token) =>
+{
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.BadRequest(new { valid = false, message = "Reset token is required." });
+    }
+
+    var cleanToken = token.Trim().ToLower();
+    var reset = await db.PasswordResets.FirstOrDefaultAsync(r => r.ResetToken == cleanToken);
+    if (reset == null || reset.Status != "Pending")
+    {
+        return Results.BadRequest(new { valid = false, message = "This password reset link is invalid or has already been used." });
+    }
+
+    if (reset.ExpiresAt < DateTime.UtcNow)
+    {
+        reset.Status = "Expired";
+        await db.SaveChangesAsync();
+        return Results.BadRequest(new { valid = false, message = "This password reset link has expired. Please request a new one." });
+    }
+
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == reset.UserId);
+    if (user == null)
+    {
+        return Results.BadRequest(new { valid = false, message = "Account associated with this reset link was not found." });
+    }
+
+    return Results.Ok(new
+    {
+        valid = true,
+        email = user.Email,
+        role = user.Role,
+        expiresAt = reset.ExpiresAt
+    });
+});
+
+// POST /api/auth/reset-password - Execute password change with token
+app.MapPost("/api/auth/reset-password", async (GrindSetDbContext db, ResetPasswordDto dto) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.Token) || string.IsNullOrWhiteSpace(dto.NewPassword))
+    {
+        return Results.BadRequest(new { message = "Token and new password are required." });
+    }
+
+    var cleanToken = dto.Token.Trim().ToLower();
+    var reset = await db.PasswordResets.FirstOrDefaultAsync(r => r.ResetToken == cleanToken && r.Status == "Pending");
+    if (reset == null)
+    {
+        return Results.BadRequest(new { message = "Reset token is invalid or has already been used." });
+    }
+
+    if (reset.ExpiresAt < DateTime.UtcNow)
+    {
+        reset.Status = "Expired";
+        await db.SaveChangesAsync();
+        return Results.BadRequest(new { message = "Reset link has expired. Please request a new one." });
+    }
+
+    var newPass = dto.NewPassword;
+    bool hasMinLength = newPass.Length >= 8;
+    bool hasUpper = System.Text.RegularExpressions.Regex.IsMatch(newPass, "[A-Z]");
+    bool hasLower = System.Text.RegularExpressions.Regex.IsMatch(newPass, "[a-z]");
+    bool hasMixed = hasUpper && hasLower;
+    bool hasNumOrSpecial = System.Text.RegularExpressions.Regex.IsMatch(newPass, "[0-9]") || System.Text.RegularExpressions.Regex.IsMatch(newPass, "[^A-Za-z0-9]");
+
+    if (!hasMinLength || !hasMixed || !hasNumOrSpecial)
+    {
+        return Results.BadRequest(new { message = "Password does not meet security requirements (min 8 chars, uppercase, lowercase, and a number or special character)." });
+    }
+
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == reset.UserId);
+    if (user == null)
+    {
+        return Results.NotFound(new { message = "User not found." });
+    }
+
+    user.PasswordHash = HashPassword(newPass);
+    reset.Status = "Completed";
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = user.UserId,
+        Action = "PASSWORD_RESET_COMPLETED",
+        TargetEntity = $"User:{user.Email}",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        message = "Password updated successfully! You can now sign in with your new password."
     });
 });
 
@@ -2002,8 +2185,9 @@ app.MapGet("/api/subscription/current", async (GrindSetDbContext db, ClaimsPrinc
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsCompany) return Results.Json(new { message = "Subscriptions are managed exclusively by Company Owners." }, statusCode: 403);
 
-    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+    int compId = auth.CompanyId ?? auth.UserId;
 
     var sub = await db.Subscriptions.FirstOrDefaultAsync(s => s.CompanyId == compId);
     if (sub == null)
@@ -2044,9 +2228,9 @@ app.MapPost("/api/subscription/checkout", async (GrindSetDbContext db, ClaimsPri
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (!auth.IsCompany && !auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsCompany) return Results.Json(new { message = "Only Company Owners can subscribe or upgrade tiers." }, statusCode: 403);
 
-    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+    int compId = auth.CompanyId ?? auth.UserId;
     var company = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == compId);
 
     var targetTier = dto.PlanTier switch
@@ -2132,9 +2316,9 @@ app.MapPost("/api/subscription/cancel", async (GrindSetDbContext db, ClaimsPrinc
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (!auth.IsCompany && !auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsCompany) return Results.Json(new { message = "Only Company Owners can manage subscription cancellations." }, statusCode: 403);
 
-    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+    int compId = auth.CompanyId ?? auth.UserId;
     var sub = await db.Subscriptions.FirstOrDefaultAsync(s => s.CompanyId == compId);
     if (sub == null) return Results.NotFound(new { message = "No active subscription found." });
 
@@ -2162,8 +2346,9 @@ app.MapGet("/api/subscription/invoices", async (GrindSetDbContext db, ClaimsPrin
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsCompany) return Results.Json(new { message = "Only Company Owners can view subscription invoices." }, statusCode: 403);
 
-    int compId = auth.IsCompany ? (auth.CompanyId ?? auth.UserId) : 2;
+    int compId = auth.CompanyId ?? auth.UserId;
     var invoices = await db.SubscriptionInvoices
         .Where(i => i.CompanyId == compId)
         .OrderByDescending(i => i.IssuedAt)
@@ -2245,6 +2430,8 @@ public record AccountCreateDto(int ProjectId, string AccountName, decimal Alloca
 public record FundReallocateDto(int ProjectId, int SourceAccountId, int TargetAccountId, decimal Amount, string Reason);
 public record ExpenseClaimDto(int AccountId, int EmployeeId, string Type, decimal Amount, string? Note);
 public record SubscriptionCheckoutDto(string PlanTier, string BillingCycle, string? CardholderName, string? CardLast4, string? PaymentMethodToken);
+public record ForgotPasswordDto(string Email);
+public record ResetPasswordDto(string Token, string NewPassword);
 
 // Auth Context
 public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int? CompanyId, int? EmployeeId)

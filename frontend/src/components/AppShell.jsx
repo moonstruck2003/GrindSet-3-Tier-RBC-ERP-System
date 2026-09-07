@@ -151,7 +151,6 @@ export default function AppShell({ children, lightMode, setLightMode }) {
       { path: '/workforce', icon: Users, label: 'Employee Oversight', accent: '#57D9A3' },
       { path: '/projects', icon: Building2, label: 'Company Directory', accent: '#FFDA75' },
       { path: '/audit', icon: ShieldAlert, label: 'System Audit Logs', accent: '#FF8F73' },
-      { path: '/billing', icon: CreditCard, label: 'Subscription Tiers', accent: '#635BFF' },
     ];
   } else if (userRole === 'Employee') {
     navItems = [
