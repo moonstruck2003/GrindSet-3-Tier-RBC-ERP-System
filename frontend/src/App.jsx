@@ -11,6 +11,7 @@ import FinancePage from './pages/FinancePage';
 import AuditPage from './pages/AuditPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import ExploreWorkspacePage from './pages/ExploreWorkspacePage';
 
 import RoleGuard from './components/RoleGuard';
 
@@ -25,8 +26,11 @@ function RoleBasedDashboard({ lightMode }) {
     if (u?.role === 'Employee') {
       return <EmployeeDashboardPage lightMode={lightMode} />;
     }
+    if (u) {
+      return <DashboardPage lightMode={lightMode} />;
+    }
   } catch {}
-  return <DashboardPage lightMode={lightMode} />;
+  return <Navigate to="/explore" replace />;
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
@@ -42,6 +46,7 @@ export default function App() {
     <AppShell lightMode={lightMode} setLightMode={setLightMode}>
       <Routes>
         <Route path="/" element={<LandingPage lightMode={lightMode} setLightMode={setLightMode} />} />
+        <Route path="/explore" element={<ExploreWorkspacePage lightMode={lightMode} setLightMode={setLightMode} />} />
         <Route path="/dashboard" element={<RoleBasedDashboard lightMode={lightMode} />} />
         <Route path="/workforce" element={<RoleGuard allowedRoles={['Admin', 'Company']} lightMode={lightMode}><WorkforcePage lightMode={lightMode} /></RoleGuard>} />
         <Route path="/projects"  element={<ProjectsPage lightMode={lightMode} />} />

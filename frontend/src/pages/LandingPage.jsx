@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sun, Moon, ArrowRight, Zap, Shield, BarChart3,
-  Users, FolderKanban, Coins, ShieldAlert, CheckCircle2,
-  ChevronRight, Activity, Sparkles, Lock,
-  HelpCircle, ChevronDown, Check, X, UserPlus, Play, Pause,
-  TrendingUp, Clock, FileText, CheckCircle
+  Users, FolderKanban, Coins, ShieldAlert,
+  ChevronRight, Sparkles, Lock,
+  HelpCircle, ChevronDown, Check, X, UserPlus,
+  TrendingUp, Clock, CheckCircle,
+  Building2, Briefcase
 } from 'lucide-react';
 import { fetchApiHealth, fetchErdSummary } from '../config/api';
 import GrindsetLogoNodes from '../components/GrindsetLogoNodes';
@@ -20,6 +21,7 @@ export default function LandingPage({ lightMode, setLightMode }) {
   const [activeTab, setActiveTab] = useState('workforce');
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [openFaq, setOpenFaq] = useState(null);
+  const [previewRole, setPreviewRole] = useState('owner');
   const navigate = useNavigate();
 
   const isDark = !lightMode;
@@ -284,7 +286,7 @@ export default function LandingPage({ lightMode, setLightMode }) {
             </motion.button>
 
             <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/explore')}
               className="btn-gold" style={{ padding: '16px 30px', borderRadius: 14, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
               Explore Live Workspace <ChevronRight className="w-5 h-5" />
             </motion.button>
@@ -299,7 +301,7 @@ export default function LandingPage({ lightMode, setLightMode }) {
               flexWrap: 'wrap', justifyContent: 'center'
             }}>
             {[
-              { label: 'Active Staff & Contractors', val: erdSummary?.totalEmployees ? `${erdSummary.totalEmployees} Active` : '24 Active', accent: '#57D9A3' },
+              { label: 'Active Staff & Contractors', val: erdSummary?.totalEmployees ? `${erdSummary.totalEmployees} Active` : '38 Active', accent: '#57D9A3' },
               { label: 'Active Client Projects', val: erdSummary?.totalProjects ? `${erdSummary.totalProjects} Projects` : '18 Projects', accent: '#FFDA75' },
               { label: 'Automated Accounting Logs', val: erdSummary?.totalTransactions ? `${erdSummary.totalTransactions} Reports` : '142 Logs', accent: '#BF9AFF' },
               { label: 'Data Security Rating', val: '100% Encrypted', accent: '#4C9AFF' },
@@ -315,8 +317,8 @@ export default function LandingPage({ lightMode, setLightMode }) {
         </motion.div>
       </section>
 
-      {/* ── Auto-Animated Live Workspace Preview Mockup ── */}
-      <section style={{ maxWidth: 1240, margin: '0 auto 110px', padding: '0 24px' }}>
+      {/* ── Auto-Animated Live Workspace Preview Mockup (Dual-Role Persona Showcase) ── */}
+      <section id="live-workspace" style={{ maxWidth: 1240, margin: '0 auto 110px', padding: '0 24px' }}>
         <motion.div
           initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.2 }}
           style={{
@@ -325,53 +327,152 @@ export default function LandingPage({ lightMode, setLightMode }) {
             boxShadow: isDark ? '0 30px 80px rgba(0,82,204,0.25)' : '0 20px 60px rgba(0,0,0,0.08)'
           }}>
           
-          {/* Mockup Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', background: isDark ? 'rgba(0,0,0,0.35)' : '#F4F5F7', borderBottom: `1px solid ${border}` }}>
+          {/* Mockup Header with Persona Switcher */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', background: isDark ? 'rgba(0,0,0,0.35)' : '#F4F5F7', borderBottom: `1px solid ${border}`, flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#FF5630' }} />
               <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#FFAB00' }} />
               <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#36B37E' }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: textMuted, marginLeft: 12 }}>
-                GrindSet Executive Command Center
+              <span style={{ fontSize: 12, fontWeight: 700, color: textPrimary, marginLeft: 10 }}>
+                Live Workspace Interactive Preview
               </span>
             </div>
+
+            {/* Persona Switcher Tabs in the Mockup */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: isDark ? 'rgba(255,255,255,0.06)' : '#EAECEF', padding: 3, borderRadius: 10, border: `1px solid ${border}` }}>
+              <button
+                onClick={() => setPreviewRole('owner')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 800,
+                  background: previewRole === 'owner' ? '#0052CC' : 'transparent',
+                  color: previewRole === 'owner' ? 'white' : textMuted,
+                  border: 'none', cursor: 'pointer', transition: 'all .2s'
+                }}>
+                <Building2 className="w-3.5 h-3.5" /> Company Owner
+              </button>
+              <button
+                onClick={() => setPreviewRole('employee')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 800,
+                  background: previewRole === 'employee' ? '#36B37E' : 'transparent',
+                  color: previewRole === 'employee' ? 'white' : textMuted,
+                  border: 'none', cursor: 'pointer', transition: 'all .2s'
+                }}>
+                <Briefcase className="w-3.5 h-3.5" /> Employee
+              </button>
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="pill pill-green"><Check className="w-3 h-3" /> System Operational</span>
-              <span className="pill pill-blue">Real-Time Sync Active</span>
+              <span className="pill pill-green"><Check className="w-3 h-3" /> Dummy Data Sandbox</span>
             </div>
           </div>
 
-          {/* Auto-Animated Metric Grid */}
-          <div style={{ padding: 28, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
-            {/* Metric 1 */}
-            <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 22, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: textMuted, textTransform: 'uppercase' }}>Monthly Operating Budget</span>
-                <TrendingUp className="w-4 h-4" style={{ color: '#57D9A3' }} />
-              </div>
-              <p style={{ fontSize: 26, fontWeight: 900, color: '#57D9A3', margin: 0 }}>$112,500</p>
-              <p style={{ fontSize: 12, color: textMuted, margin: 0, marginTop: 4 }}>75% of $150,000 Allocated Funds</p>
-            </motion.div>
+          {/* Dynamic Preview Body based on previewRole */}
+          <div style={{ padding: 28 }}>
+            {previewRole === 'owner' ? (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#4C9AFF' }}>Executive Command Suite</span>
+                    <h4 style={{ fontSize: 18, fontWeight: 900, color: textPrimary, margin: '2px 0 0' }}>Apex Dynamics Technologies Inc. (Company Owner)</h4>
+                  </div>
+                  <span className="pill pill-gold">3 Pending Employee Signups</span>
+                </div>
 
-            {/* Metric 2 */}
-            <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 22, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: textMuted, textTransform: 'uppercase' }}>Workforce Utilization</span>
-                <Users className="w-4 h-4" style={{ color: '#4C9AFF' }} />
-              </div>
-              <p style={{ fontSize: 26, fontWeight: 900, color: '#4C9AFF', margin: 0 }}>94.2% Capacity</p>
-              <p style={{ fontSize: 12, color: textMuted, margin: 0, marginTop: 4 }}>24 Active Staff Members Assigned</p>
-            </motion.div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 18, marginBottom: 24 }}>
+                  <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 20, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>Monthly Budget Cap</span>
+                      <TrendingUp className="w-4 h-4" style={{ color: '#57D9A3' }} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 900, color: '#57D9A3', margin: 0 }}>$145,000</p>
+                    <p style={{ fontSize: 12, color: textMuted, margin: '4px 0 0' }}>74.6% Spent ($108,200) · 4 Accounts</p>
+                  </motion.div>
 
-            {/* Metric 3 */}
-            <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 22, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: textMuted, textTransform: 'uppercase' }}>Project Milestones</span>
-                <CheckCircle className="w-4 h-4" style={{ color: '#BF9AFF' }} />
+                  <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 20, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>Workforce Staff</span>
+                      <Users className="w-4 h-4" style={{ color: '#4C9AFF' }} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 900, color: '#4C9AFF', margin: 0 }}>38 Active Personnel</p>
+                    <p style={{ fontSize: 12, color: textMuted, margin: '4px 0 0' }}>3 Pending Review · 6 Departments</p>
+                  </motion.div>
+
+                  <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 20, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>Project Milestones</span>
+                      <CheckCircle className="w-4 h-4" style={{ color: '#BF9AFF' }} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 900, color: '#BF9AFF', margin: 0 }}>8 Active Projects</p>
+                    <p style={{ fontSize: 12, color: textMuted, margin: '4px 0 0' }}>92% Sprint Milestone Completion</p>
+                  </motion.div>
+                </div>
               </div>
-              <p style={{ fontSize: 26, fontWeight: 900, color: '#BF9AFF', margin: 0 }}>18 / 20 Delivered</p>
-              <p style={{ fontSize: 12, color: textMuted, margin: 0, marginTop: 4 }}>90% Sprint Milestone Completion</p>
-            </motion.div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#57D9A3' }}>Employee Contributor Suite</span>
+                    <h4 style={{ fontSize: 18, fontWeight: 900, color: textPrimary, margin: '2px 0 0' }}>Alex Rivera · Senior Frontend Developer</h4>
+                  </div>
+                  <span className="pill pill-green">Direct Deposit Active · $65/hr</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 18, marginBottom: 24 }}>
+                  <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 20, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>Assigned Sprint Tasks</span>
+                      <FolderKanban className="w-4 h-4" style={{ color: '#4C9AFF' }} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 900, color: '#4C9AFF', margin: 0 }}>5 Active Tasks</p>
+                    <p style={{ fontSize: 12, color: textMuted, margin: '4px 0 0' }}>2 High Priority · Kanban Workflow</p>
+                  </motion.div>
+
+                  <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 20, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>Billable Hours Logged</span>
+                      <Clock className="w-4 h-4" style={{ color: '#57D9A3' }} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 900, color: '#57D9A3', margin: 0 }}>38.5 Hours</p>
+                    <p style={{ fontSize: 12, color: textMuted, margin: '4px 0 0' }}>Target: 40 hrs · Daily Timesheet</p>
+                  </motion.div>
+
+                  <motion.div whileHover={{ scale: 1.02 }} style={{ padding: 20, borderRadius: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#FAFBFC', border: `1px solid ${border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>Expense Claims</span>
+                      <Coins className="w-4 h-4" style={{ color: '#FFAB00' }} />
+                    </div>
+                    <p style={{ fontSize: 24, fontWeight: 900, color: '#FFAB00', margin: 0 }}>$420.00 Filed</p>
+                    <p style={{ fontSize: 12, color: textMuted, margin: '4px 0 0' }}>Under Owner Sign-off · Receipts</p>
+                  </motion.div>
+                </div>
+              </div>
+            )}
+
+            {/* Launch Interactive Workspace Demo Button */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16,
+              padding: '16px 20px', borderRadius: 14, background: isDark ? 'rgba(0,82,204,0.12)' : '#EDF4FF', border: `1px solid ${isDark ? 'rgba(0,82,204,0.25)' : '#C2DBFF'}`
+            }}>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 800, color: textPrimary, margin: 0 }}>
+                  Want to test real approvals, timesheet logging, and SignalR team chat?
+                </p>
+                <p style={{ fontSize: 12, color: textMuted, margin: '2px 0 0' }}>
+                  Our live interactive simulation uses 100% dummy enterprise data with zero setup required.
+                </p>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                onClick={() => navigate('/explore')}
+                style={{
+                  padding: '10px 22px', borderRadius: 10, background: '#0052CC', color: 'white',
+                  border: 'none', fontWeight: 800, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                }}>
+                Launch Full Live Workspace Demo <ArrowRight className="w-4 h-4" />
+              </motion.button>
+            </div>
           </div>
 
         </motion.div>
