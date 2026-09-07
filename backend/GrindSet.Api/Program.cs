@@ -638,6 +638,26 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
         return Results.BadRequest(new { message = "Email, Password, and Full Name are required." });
     }
 
+    // Password strength validation: at least 8 characters, capital & small letters mixed, special characters or numbers
+    if (dto.Password.Length < 8)
+    {
+        return Results.BadRequest(new { message = "Password must be at least 8 characters long." });
+    }
+
+    bool hasUpper = dto.Password.Any(char.IsUpper);
+    bool hasLower = dto.Password.Any(char.IsLower);
+    if (!hasUpper || !hasLower)
+    {
+        return Results.BadRequest(new { message = "Password must contain a mix of uppercase and lowercase letters." });
+    }
+
+    bool hasDigit = dto.Password.Any(char.IsDigit);
+    bool hasSpecial = dto.Password.Any(ch => !char.IsLetterOrDigit(ch));
+    if (!hasDigit && !hasSpecial)
+    {
+        return Results.BadRequest(new { message = "Password must contain at least one number or special character." });
+    }
+
     var cleanEmail = dto.Email.Trim().ToLower();
     var existingUser = await db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == cleanEmail);
     if (existingUser != null)

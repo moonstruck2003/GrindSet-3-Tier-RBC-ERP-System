@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, X, User, Mail, Lock, ChevronRight, AlertCircle, CheckCircle2, Loader2, Building2 } from 'lucide-react';
+import { Shield, X, User, Mail, Lock, ChevronRight, AlertCircle, CheckCircle2, Loader2, Building2, Eye, EyeOff, Check } from 'lucide-react';
 import { api } from '../config/api';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = 'signup', isDark = true }) {
@@ -12,6 +12,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [designation, setDesignation] = useState('Full Stack Developer');
   const [hourlyRate, setHourlyRate] = useState('85');
   const [companyName, setCompanyName] = useState('');
@@ -48,6 +50,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
     if (newMode === 'signup' && role === 'SuperAdmin') {
       setRole('Employee');
     }
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     resetForm();
   };
 
@@ -78,6 +84,30 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
     }
   };
 
+  // Password validation rules (for signup)
+  const hasMinLength = password.length >= 8;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasMixedCase = hasUpper && hasLower;
+  const hasDigit = /[0-9]/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  const hasNumberOrSpecial = hasDigit || hasSpecial;
+  const isConfirmMatching = confirmPassword.length > 0 && password === confirmPassword;
+  const isPasswordValid = hasMinLength && hasMixedCase && hasNumberOrSpecial;
+
+  // Password strength calculation
+  const strengthScore = [hasMinLength, hasMixedCase, hasDigit, hasSpecial].filter(Boolean).length;
+  const getStrengthInfo = () => {
+    if (!password) return { label: '', color: '#8993A4', percent: 0 };
+    if (!isPasswordValid) {
+      if (strengthScore <= 1) return { label: 'Weak', color: '#EF4444', percent: 25 };
+      return { label: 'Moderate', color: '#F59E0B', percent: 50 };
+    }
+    if (hasDigit && hasSpecial) return { label: 'Very Strong', color: '#059669', percent: 100 };
+    return { label: 'Strong', color: '#10B981', percent: 80 };
+  };
+  const strengthInfo = getStrengthInfo();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     resetForm();
@@ -91,8 +121,16 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
         setError('Please enter a valid email address.');
         return;
       }
-      if (!password || password.length < 4) {
-        setError('Password must be at least 4 characters long.');
+      if (!password || password.length < 8) {
+        setError('Password must be at least 8 characters long.');
+        return;
+      }
+      if (!hasMixedCase) {
+        setError('Password must contain a mix of uppercase and lowercase letters.');
+        return;
+      }
+      if (!hasNumberOrSpecial) {
+        setError('Password must contain at least one number or special character.');
         return;
       }
       if (password !== confirmPassword) {
@@ -390,14 +428,25 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
                   <div style={{ position: 'relative' }}>
                     <Lock className="w-4 h-4" style={{ position: 'absolute', left: 12, top: 12, color: textMuted }} />
                     <input
-                      type="password"
+                      type={showPassword ? 'text' : 'password'}
                       required
                       placeholder="••••••••"
                       className="gs-input"
-                      style={{ paddingLeft: 38, background: inputBg, color: textPrimary, borderColor: border }}
+                      style={{ paddingLeft: 38, paddingRight: 36, background: inputBg, color: textPrimary, borderColor: border }}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                      style={{
+                        position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                        background: 'transparent', border: 'none', cursor: 'pointer', color: textMuted, padding: 2, display: 'flex', alignItems: 'center'
+                      }}>
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -406,17 +455,92 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
                   <div style={{ position: 'relative' }}>
                     <Lock className="w-4 h-4" style={{ position: 'absolute', left: 12, top: 12, color: textMuted }} />
                     <input
-                      type="password"
+                      type={showConfirmPassword ? 'text' : 'password'}
                       required
                       placeholder="••••••••"
                       className="gs-input"
-                      style={{ paddingLeft: 38, background: inputBg, color: textPrimary, borderColor: border }}
+                      style={{ paddingLeft: 38, paddingRight: 36, background: inputBg, color: textPrimary, borderColor: border }}
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      tabIndex={-1}
+                      title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                      style={{
+                        position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                        background: 'transparent', border: 'none', cursor: 'pointer', color: textMuted, padding: 2, display: 'flex', alignItems: 'center'
+                      }}>
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
               </div>
+
+              {/* Password Strength & Requirements Checklist (Sign Up only) */}
+              {password.length > 0 && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: 12,
+                  background: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F4F5F7',
+                  border: `1px solid ${border}`
+                }}>
+                  {/* Strength Bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: textMuted }}>Password Strength:</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: strengthInfo.color }}>
+                      {strengthInfo.label}
+                    </span>
+                  </div>
+                  <div style={{ width: '100%', height: 4, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.1)' : '#DFE1E6', overflow: 'hidden', marginBottom: 10 }}>
+                    <div style={{
+                      width: `${strengthInfo.percent}%`, height: '100%',
+                      background: strengthInfo.color, transition: 'all 0.3s ease'
+                    }} />
+                  </div>
+
+                  {/* Requirements List */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 11 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: hasMinLength ? '#10B981' : textMuted }}>
+                      {hasMinLength ? (
+                        <Check className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                      ) : (
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', margin: '0 4px', flexShrink: 0 }} />
+                      )}
+                      <span style={{ fontWeight: hasMinLength ? 600 : 400 }}>At least 8 characters</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: hasMixedCase ? '#10B981' : textMuted }}>
+                      {hasMixedCase ? (
+                        <Check className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                      ) : (
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', margin: '0 4px', flexShrink: 0 }} />
+                      )}
+                      <span style={{ fontWeight: hasMixedCase ? 600 : 400 }}>Capital & small letters</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: hasNumberOrSpecial ? '#10B981' : textMuted }}>
+                      {hasNumberOrSpecial ? (
+                        <Check className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                      ) : (
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', margin: '0 4px', flexShrink: 0 }} />
+                      )}
+                      <span style={{ fontWeight: hasNumberOrSpecial ? 600 : 400 }}>Number or special character</span>
+                    </div>
+
+                    {confirmPassword.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: isConfirmMatching ? '#10B981' : '#EF4444' }}>
+                        {isConfirmMatching ? (
+                          <Check className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                        ) : (
+                          <X className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+                        )}
+                        <span style={{ fontWeight: isConfirmMatching ? 600 : 400 }}>{isConfirmMatching ? 'Passwords match' : 'Passwords must match'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             /* Fields for SIGN IN */
@@ -442,14 +566,25 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
                 <div style={{ position: 'relative' }}>
                   <Lock className="w-4 h-4" style={{ position: 'absolute', left: 12, top: 12, color: textMuted }} />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     placeholder="••••••••"
                     className="gs-input"
-                    style={{ paddingLeft: 38, background: inputBg, color: textPrimary, borderColor: border }}
+                    style={{ paddingLeft: 38, paddingRight: 36, background: inputBg, color: textPrimary, borderColor: border }}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    style={{
+                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      background: 'transparent', border: 'none', cursor: 'pointer', color: textMuted, padding: 2, display: 'flex', alignItems: 'center'
+                    }}>
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
             </>
