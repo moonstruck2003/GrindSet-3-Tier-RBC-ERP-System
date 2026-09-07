@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FolderKanban, X, Target, FileText, DollarSign, Users,
   CheckSquare, Coins, Calendar, ArrowRight, Plus, UserPlus,
-  Trash2, Lock, Sparkles
+  Trash2, Lock, Sparkles, MessageSquare
 } from 'lucide-react';
 import { api } from '../config/api';
+import ProjectChatModal from './ProjectChatModal';
 
 export default function ProjectDetailModal({ isOpen, onClose, project, accounts = [], tasks = [], lightMode, onOpenCreateModal }) {
   if (!isOpen || !project) return null;
@@ -17,6 +18,7 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [memberRole, setMemberRole] = useState('Team Member');
   const [actionMsg, setActionMsg] = useState('');
+  const [showChatModal, setShowChatModal] = useState(false);
 
   let user = null;
   try {
@@ -139,9 +141,33 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
             </div>
           </div>
 
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: textMut }}>
-            <X style={{ width: 20, height: 20 }} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={() => setShowChatModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                borderRadius: 8,
+                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.25))',
+                border: '1px solid rgba(99, 102, 241, 0.45)',
+                color: '#818CF8',
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title="Open Real-time Project Chat (SignalR)"
+            >
+              <MessageSquare style={{ width: 14, height: 14 }} />
+              <span>💬 Live Chat</span>
+            </button>
+
+            <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: textMut }}>
+              <X style={{ width: 20, height: 20 }} />
+            </button>
+          </div>
         </div>
 
         {/* Non-Member Banner */}
@@ -396,6 +422,15 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
             Close Inspector
           </button>
         </div>
+
+        {/* Real-time Project Chat Modal */}
+        <ProjectChatModal
+          isOpen={showChatModal}
+          onClose={() => setShowChatModal(false)}
+          projectId={projId}
+          projectName={projName}
+          isDark={!lightMode}
+        />
 
       </motion.div>
     </div>

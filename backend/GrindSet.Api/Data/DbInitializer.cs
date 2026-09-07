@@ -41,7 +41,23 @@ namespace GrindSet.Api.Data
                     ""IssuedAt"" TEXT NOT NULL,
                     ""ReceiptUrl"" TEXT NULL
                 );
+                CREATE TABLE IF NOT EXISTS ""ProjectChatMessages"" (
+                    ""MessageId"" INTEGER NOT NULL CONSTRAINT ""PK_ProjectChatMessages"" PRIMARY KEY AUTOINCREMENT,
+                    ""ProjectId"" INTEGER NOT NULL,
+                    ""SenderUserId"" INTEGER NOT NULL,
+                    ""SenderName"" TEXT NOT NULL,
+                    ""SenderEmail"" TEXT NOT NULL DEFAULT '',
+                    ""SenderRole"" TEXT NOT NULL,
+                    ""MessageText"" TEXT NOT NULL,
+                    ""SentAt"" TEXT NOT NULL
+                );
             ");
+
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"ALTER TABLE ""ProjectChatMessages"" ADD COLUMN ""SenderEmail"" TEXT NOT NULL DEFAULT '';");
+            }
+            catch { /* column already exists */ }
 
             // Seed Base SuperAdmin and Acme if no users
             var adminUser = EnsureUser(context, "admin@grindset.io", "Admin");
@@ -113,6 +129,16 @@ namespace GrindSet.Api.Data
             EnsureTask(context, acmeProj1.ProjectId, acmeEmp4.EmployeeId, "Audit System Theme Tokens & Contrast", "Ensure WCAG AAA compliant styling across dark/light mode.", "Medium", "Done", 3);
             EnsureTask(context, acmeProj1.ProjectId, acmeEmp8.EmployeeId, "Live Notification Bell & Badge Counter", "Implement polling state for instant approval notifications.", "High", "In Review", 5);
 
+            // Project Real-Time Chat Message History
+            EnsureChatMessage(context, acmeProj1.ProjectId, acmeEmp2User.UserId, "Sarah Connor", "Project Manager",
+                "Good morning team! Let's do a quick sync on the Core ERP Platform sprint goals. John, how is the RBAC endpoint protection progressing?", DateTime.UtcNow.AddHours(-4));
+            EnsureChatMessage(context, acmeProj1.ProjectId, acmeEmp1User.UserId, "John Doe", "Senior Full-Stack Engineer",
+                "Morning Sarah! The 3-tier JWT role validation is completed and tested. Working on the financial fund reallocation guardrails next.", DateTime.UtcNow.AddHours(-3).AddMinutes(42));
+            EnsureChatMessage(context, acmeProj1.ProjectId, acmeEmp8User.UserId, "Liam O'Connor", "React Developer",
+                "Realtime SignalR notifications and chat tabs are hooked up on the frontend! Ready for code review.", DateTime.UtcNow.AddHours(-2).AddMinutes(15));
+            EnsureChatMessage(context, acmeProj1.ProjectId, acmeEmp2User.UserId, "Sarah Connor", "Project Manager",
+                "Fantastic progress everyone. I've approved the server hardware budget invoice. Keep up the high velocity!", DateTime.UtcNow.AddMinutes(-45));
+
             // =========================================================================
             // 🏢 2. APEX CYBERSEC DYNAMICS (Enterprise Tier - $29/mo, Unlimited Scale)
             // =========================================================================
@@ -177,6 +203,13 @@ namespace GrindSet.Api.Data
             EnsureTask(context, apexProj1.ProjectId, apexEmp1.EmployeeId, "Publish Zero-Trust RFC & Node Topology", "Draft internal standard for mTLS cryptographic handshake.", "Highest", "Done", 8);
             EnsureTask(context, apexProj1.ProjectId, apexEmp7.EmployeeId, "Deploy WireGuard Mesh Gateways in EU-West", "Stand up edge gateways across Frankfurt and Dublin regions.", "High", "In Progress", 5);
             EnsureTask(context, apexProj1.ProjectId, apexEmp10.EmployeeId, "Benchmark Ed25519 vs Post-Quantum Dilithium", "Measure latency overhead on ingress reverse proxy under 50k req/sec.", "High", "In Review", 8);
+
+            EnsureChatMessage(context, apexProj1.ProjectId, apexEmp1User.UserId, "Marcus Brody", "Project Manager",
+                "Zero-Trust Mesh deployment is initiating canary rollouts in region us-east-1. Team, monitor telemetry metrics closely.", DateTime.UtcNow.AddHours(-5));
+            EnsureChatMessage(context, apexProj1.ProjectId, apexEmp7User.UserId, "Tariq Haddad", "Network Architect",
+                "WireGuard edge tunnel latency is under 3.5ms between Frankfurt and Dublin nodes. No dropped packets observed.", DateTime.UtcNow.AddHours(-3));
+            EnsureChatMessage(context, apexProj1.ProjectId, apexEmp10User.UserId, "Elena Rostova", "Cryptography Lead",
+                "Post-quantum handshake overhead benchmarks came in within our 5% SLA target.", DateTime.UtcNow.AddMinutes(-35));
 
             var apexProj2 = EnsureProject(context, apexComp.CompanyId, apexEmp11.EmployeeId, "Autonomous SOAR Incident Pipeline", "In Progress", 320000.00m,
                 "Automated detection and response orchestrator converting raw SIEM telemetry into autonomous mitigation plays.",
@@ -750,6 +783,23 @@ namespace GrindSet.Api.Data
                 Status = status,
                 StoryPoints = storyPoints,
                 CreatedAt = DateTime.UtcNow
+            });
+            context.SaveChanges();
+        }
+
+        private static void EnsureChatMessage(GrindSetDbContext context, int projectId, int senderUserId, string senderName, string senderRole, string messageText, DateTime sentAt)
+        {
+            var existing = context.ProjectChatMessages.FirstOrDefault(m => m.ProjectId == projectId && m.SenderUserId == senderUserId && m.MessageText == messageText);
+            if (existing != null) return;
+
+            context.ProjectChatMessages.Add(new ProjectChatMessage
+            {
+                ProjectId = projectId,
+                SenderUserId = senderUserId,
+                SenderName = senderName,
+                SenderRole = senderRole,
+                MessageText = messageText,
+                SentAt = sentAt
             });
             context.SaveChanges();
         }

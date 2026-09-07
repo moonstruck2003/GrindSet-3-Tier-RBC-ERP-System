@@ -84,6 +84,9 @@ export const api = {
   addProjectMember:     (id, data) => apiFetch(`/api/projects/${id}/members`, { method: 'POST', body: JSON.stringify(data) }),
   removeProjectMember:  (id, empId) => apiFetch(`/api/projects/${id}/members/${empId}`, { method: 'DELETE' }),
 
+  projectChatMessages:    (projectId) => apiFetch(`/api/projects/${projectId}/chat/messages`),
+  sendProjectChatMessage: (projectId, data) => apiFetch(`/api/projects/${projectId}/chat/messages`, { method: 'POST', body: JSON.stringify(data) }),
+
   addEmployee: (data) => apiFetch('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
   addTransaction: (data) => apiFetch('/api/transactions', { method: 'POST', body: JSON.stringify(data) }),
 

@@ -30,6 +30,7 @@ namespace GrindSet.Api.Data
         public DbSet<TaskItem> Tasks { get; set; } = null!;
         public DbSet<CompanySubscription> Subscriptions { get; set; } = null!;
         public DbSet<SubscriptionInvoice> SubscriptionInvoices { get; set; } = null!;
+        public DbSet<ProjectChatMessage> ProjectChatMessages { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -44,6 +45,7 @@ namespace GrindSet.Api.Data
             modelBuilder.Entity<Project>().HasKey(p => p.ProjectId);
             modelBuilder.Entity<CompanySubscription>().HasKey(s => s.SubscriptionId);
             modelBuilder.Entity<SubscriptionInvoice>().HasKey(i => i.InvoiceId);
+            modelBuilder.Entity<ProjectChatMessage>().HasKey(m => m.MessageId);
         }
     }
 }
