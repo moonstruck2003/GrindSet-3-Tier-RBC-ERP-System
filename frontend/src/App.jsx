@@ -9,6 +9,7 @@ import WorkforcePage from './pages/WorkforcePage';
 import ProjectsPage from './pages/ProjectsPage';
 import FinancePage from './pages/FinancePage';
 import AuditPage from './pages/AuditPage';
+import SubscriptionPage from './pages/SubscriptionPage';
 
 import RoleGuard from './components/RoleGuard';
 
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/projects"  element={<ProjectsPage lightMode={lightMode} />} />
         <Route path="/finance"   element={<FinancePage lightMode={lightMode} />} />
         <Route path="/audit"     element={<RoleGuard allowedRoles={['Admin', 'Company']} lightMode={lightMode}><AuditPage lightMode={lightMode} /></RoleGuard>} />
+        <Route path="/billing"   element={<RoleGuard allowedRoles={['Admin', 'Company']} lightMode={lightMode}><SubscriptionPage lightMode={lightMode} /></RoleGuard>} />
         <Route path="*"          element={<LandingPage lightMode={lightMode} setLightMode={setLightMode} />} />
       </Routes>
     </AppShell>
