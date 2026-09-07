@@ -46,3 +46,6 @@ backend/GrindSet.Api/grindset.db-*
 
 # Preserve EF Core Migrations for GitHub DB Sync across team members!
 !backend/GrindSet.Api/Migrations/*
+
+# Local appsettings with private credentials (ignored from git)
+backend/GrindSet.Api/appsettings.Local.json

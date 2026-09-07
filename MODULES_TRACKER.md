@@ -15,7 +15,7 @@ Team members should mark completed items by changing `[ ]` to `[x]`.
 - [ ] **Login to ERP Portal**
   - [ ] Trigger Multi-Factor Auth (`«extend»`)
   - [ ] Lock Account on Failed Attempts (`«extend»`)
-- [ ] **Reset Password Workflow**
+- [x] **Reset Password Workflow** (Brevo / SMTP Email Service & Secure Token Reset)
 - [ ] **Manage Role-Based Access (RBAC)** (Admin)
 - [ ] **View Security Audit Logs** (Admin)
 
