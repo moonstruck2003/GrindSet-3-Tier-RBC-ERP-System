@@ -595,16 +595,16 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
                       <div style={{
                         padding: '10px 12px',
                         borderRadius: 8,
-                        background: 'rgba(99, 102, 241, 0.08)',
-                        border: '1px solid rgba(99, 102, 241, 0.25)',
+                        background: 'rgba(245, 158, 11, 0.1)',
+                        border: '1px solid rgba(245, 158, 11, 0.3)',
                         fontSize: '0.75rem',
-                        color: '#818CF8',
+                        color: '#F59E0B',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 8
                       }}>
                         <Shield className="w-4 h-4 flex-shrink-0" />
-                        <span><strong>Existing Tenancy:</strong> You will be registered as an owner of this workspace with full access to its team, projects, and billing.</span>
+                        <span><strong>Admin Verification Required:</strong> For corporate security, claiming ownership of an already registered enterprise company requires verification and approval from the System Administrator before access is granted.</span>
                       </div>
                     </>
                   )}

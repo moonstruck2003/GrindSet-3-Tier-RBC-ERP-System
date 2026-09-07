@@ -59,6 +59,12 @@ namespace GrindSet.Api.Data
             }
             catch { /* column already exists */ }
 
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""CompanyId"" INTEGER NULL;");
+            }
+            catch { /* column already exists */ }
+
             // Seed Base SuperAdmin and Acme if no users
             var adminUser = EnsureUser(context, "admin@grindset.io", "Admin");
             if (!context.Admins.Any(a => a.AdminId == adminUser.UserId))
