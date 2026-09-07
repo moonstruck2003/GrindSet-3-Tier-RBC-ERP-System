@@ -257,4 +257,17 @@ namespace GrindSet.Api.Models
         public DateTime IssuedAt { get; set; } = DateTime.UtcNow;
         public string? ReceiptUrl { get; set; }
     }
+
+    public class ProjectChatMessage
+    {
+        [Key]
+        public int MessageId { get; set; }
+        public int ProjectId { get; set; }
+        public int SenderUserId { get; set; }
+        public string SenderName { get; set; } = string.Empty;
+        public string SenderEmail { get; set; } = string.Empty;
+        public string SenderRole { get; set; } = "Member"; // "Project Manager", "Member", "Company Owner", "Admin"
+        public string MessageText { get; set; } = string.Empty;
+        public DateTime SentAt { get; set; } = DateTime.UtcNow;
+    }
 }

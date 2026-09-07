@@ -15,11 +15,15 @@ export default function WorkforcePage({ lightMode }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [form, setForm] = useState({ email: '', fullName: '', designation: '', hourlyRate: '' });
 
   const load = () => {
     setLoading(true);
     api.employees().then(setEmployees).catch(() => setEmployees([])).finally(() => setLoading(false));
+    api.currentSubscription().then(data => {
+      if (data?.usage) setUsage(data.usage);
+    }).catch(() => {});
   };
   useEffect(() => { load(); }, []);
 
@@ -42,7 +46,7 @@ export default function WorkforcePage({ lightMode }) {
       showToast('Employee onboarded successfully!');
       load();
     } catch (err) {
-      showToast(`Error: ${err.message}`, false);
+      showToast(err.message || 'Failed to onboard employee.', false);
     } finally {
       setSaving(false);
     }
@@ -70,10 +74,27 @@ export default function WorkforcePage({ lightMode }) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 900, color: T.textPri, margin: 0 }}>
-            Workforce{' '}
-            <span style={{ background: 'linear-gradient(135deg,#79F2C0,#36B37E)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Directory</span>
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: T.textPri, margin: 0 }}>
+              Workforce{' '}
+              <span style={{ background: 'linear-gradient(135deg,#79F2C0,#36B37E)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Directory</span>
+            </h2>
+            {usage && (
+              <span style={{
+                fontSize: 11,
+                fontWeight: 800,
+                padding: '2px 9px',
+                borderRadius: 999,
+                background: usage.maxEmployees && usage.employeesCount >= usage.maxEmployees 
+                  ? 'rgba(255,86,48,0.15)' 
+                  : 'rgba(0,82,204,0.12)',
+                color: usage.maxEmployees && usage.employeesCount >= usage.maxEmployees ? '#FF5630' : '#4C9AFF',
+                border: `1px solid ${usage.maxEmployees && usage.employeesCount >= usage.maxEmployees ? 'rgba(255,86,48,0.3)' : 'rgba(0,82,204,0.3)'}`
+              }}>
+                {usage.maxEmployees ? `Seats: ${usage.employeesCount} / ${usage.maxEmployees} (${usage.tier})` : `Seats: ${usage.employeesCount} (Unlimited)`}
+              </span>
+            )}
+          </div>
           <p style={{ fontSize: 13, color: T.textMut, marginTop: 4 }}>
             {employees.length} employee{employees.length !== 1 ? 's' : ''} registered across all departments
           </p>

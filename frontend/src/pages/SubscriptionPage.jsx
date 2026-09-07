@@ -20,6 +20,7 @@ export default function SubscriptionPage({ lightMode = false }) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [usage, setUsage] = useState(null);
 
   const cardBg = lightMode ? '#FFFFFF' : '#0D1B36';
   const border = lightMode ? '#DFE1E6' : 'rgba(255,255,255,0.12)';
@@ -41,6 +42,7 @@ export default function SubscriptionPage({ lightMode = false }) {
       if (currentData) {
         setCurrentSub(currentData.subscription || null);
         setCompanyName(currentData.companyName || 'Organization');
+        setUsage(currentData.usage || null);
         if (currentData.subscription?.billingCycle) {
           setBillingCycle(currentData.subscription.billingCycle);
         }
@@ -68,6 +70,7 @@ export default function SubscriptionPage({ lightMode = false }) {
       setInvoices(prev => [newInvoice, ...prev]);
     }
     setActionMsg(`Subscription successfully upgraded to ${updatedSub.planTier} (${updatedSub.billingCycle})!`);
+    loadData();
     setTimeout(() => setActionMsg(''), 5000);
   };
 
@@ -245,6 +248,139 @@ export default function SubscriptionPage({ lightMode = false }) {
                 Cancel Auto-Renewal
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Active Quota & Resource Utilization Tracker ── */}
+      {usage && (
+        <div style={{
+          padding: 22,
+          borderRadius: 18,
+          background: lightMode ? 'rgba(0,82,204,0.03)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${border}`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#0052CC' }} />
+              <span style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: textPri }}>
+                Resource & Tier Quota Utilization
+              </span>
+            </div>
+            <span style={{ fontSize: 11, color: textMut, fontWeight: 600 }}>
+              Limits strictly enforced per company tenancy
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+            {/* Project Quota */}
+            <div style={{
+              padding: 16,
+              borderRadius: 14,
+              background: cardBg,
+              border: `1px solid ${border}`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: textPri }}>Active Projects</span>
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  background: usage.maxProjects && usage.projectsCount >= usage.maxProjects 
+                    ? 'rgba(255,86,48,0.15)' 
+                    : 'rgba(0,82,204,0.12)',
+                  color: usage.maxProjects && usage.projectsCount >= usage.maxProjects ? '#FF5630' : '#4C9AFF'
+                }}>
+                  {usage.maxProjects ? `${usage.projectsCount} / ${usage.maxProjects} Projects` : `${usage.projectsCount} Projects (Unlimited)`}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ width: '100%', height: 7, borderRadius: 999, background: lightMode ? '#E9ECEF' : 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  borderRadius: 999,
+                  width: usage.maxProjects 
+                    ? `${Math.min(100, Math.round((usage.projectsCount / usage.maxProjects) * 100))}%` 
+                    : '100%',
+                  background: usage.maxProjects && usage.projectsCount >= usage.maxProjects
+                    ? '#FF5630'
+                    : 'linear-gradient(90deg, #0052CC 0%, #4C9AFF 100%)',
+                  transition: 'width 0.4s ease'
+                }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: textMut }}>
+                <span>Tier Limit: {usage.maxProjects ? `${usage.maxProjects} max` : 'Unlimited (No Limit)'}</span>
+                <span>
+                  {usage.maxProjects && usage.projectsCount >= usage.maxProjects ? (
+                    <strong style={{ color: '#FF5630' }}>Quota Reached · Upgrade to add more</strong>
+                  ) : (
+                    <span>{usage.maxProjects ? `${usage.maxProjects - usage.projectsCount} remaining` : 'No upper limit'}</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/* Employee Quota */}
+            <div style={{
+              padding: 16,
+              borderRadius: 14,
+              background: cardBg,
+              border: `1px solid ${border}`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: textPri }}>Approved Workforce Seats</span>
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  background: usage.maxEmployees && usage.employeesCount >= usage.maxEmployees 
+                    ? 'rgba(255,86,48,0.15)' 
+                    : 'rgba(54,179,126,0.15)',
+                  color: usage.maxEmployees && usage.employeesCount >= usage.maxEmployees ? '#FF5630' : '#36B37E'
+                }}>
+                  {usage.maxEmployees ? `${usage.employeesCount} / ${usage.maxEmployees} Employees` : `${usage.employeesCount} Employees (Unlimited)`}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ width: '100%', height: 7, borderRadius: 999, background: lightMode ? '#E9ECEF' : 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  borderRadius: 999,
+                  width: usage.maxEmployees 
+                    ? `${Math.min(100, Math.round((usage.employeesCount / usage.maxEmployees) * 100))}%` 
+                    : '100%',
+                  background: usage.maxEmployees && usage.employeesCount >= usage.maxEmployees
+                    ? '#FF5630'
+                    : 'linear-gradient(90deg, #36B37E 0%, #57D9A3 100%)',
+                  transition: 'width 0.4s ease'
+                }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: textMut }}>
+                <span>Tier Limit: {usage.maxEmployees ? `${usage.maxEmployees} max` : 'Unlimited (No Limit)'}</span>
+                <span>
+                  {usage.maxEmployees && usage.employeesCount >= usage.maxEmployees ? (
+                    <strong style={{ color: '#FF5630' }}>Quota Reached · Upgrade to add more</strong>
+                  ) : (
+                    <span>{usage.maxEmployees ? `${usage.maxEmployees - usage.employeesCount} remaining` : 'No upper limit'}</span>
+                  )}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}

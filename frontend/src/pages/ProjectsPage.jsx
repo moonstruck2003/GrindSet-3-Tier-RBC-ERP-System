@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   FolderKanban, Calendar, DollarSign, TrendingUp, CheckCircle, AlertCircle,
-  Clock, Target, Layers, Plus, Filter, ArrowRight, Eye, ChevronRight, CheckSquare, Sparkles
+  Clock, Target, Layers, Plus, Filter, ArrowRight, Eye, ChevronRight, CheckSquare, Sparkles, MessageSquare
 } from 'lucide-react';
 import { api } from '../config/api';
 import ProjectDetailModal from '../components/ProjectDetailModal';
+import ProjectChatModal from '../components/ProjectChatModal';
 
 const STATUS_CONFIG = {
   'In Progress': { bg: 'rgba(255,171,0,0.15)', color: '#FFDA75', bdr: 'rgba(255,171,0,0.3)', dot: '#FFAB00', health: 'On Track' },
@@ -40,6 +41,10 @@ export default function ProjectsPage({ lightMode }) {
   // Detail Modal State
   const [selectedProjectForDetail, setSelectedProjectForDetail] = useState(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+
+  // Real-time Chat Modal State
+  const [chatProject, setChatProject] = useState(null);
+  const [chatModalOpen, setChatModalOpen] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -221,13 +226,37 @@ export default function ProjectsPage({ lightMode }) {
                     ${budget.toLocaleString()}
                   </div>
 
-                  <button
-                    onClick={() => { setSelectedProjectForDetail(p); setDetailModalOpen(true); }}
-                    className="btn-ghost"
-                    style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <Eye style={{ width: 13, height: 13 }} /> Inspect Project
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button
+                      onClick={() => { setChatProject(p); setChatModalOpen(true); }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))',
+                        border: '1px solid rgba(99, 102, 241, 0.35)',
+                        color: '#818CF8',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Open Live SignalR Chat"
+                    >
+                      <MessageSquare style={{ width: 13, height: 13 }} />
+                      <span>Chat</span>
+                    </button>
+
+                    <button
+                      onClick={() => { setSelectedProjectForDetail(p); setDetailModalOpen(true); }}
+                      className="btn-ghost"
+                      style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <Eye style={{ width: 13, height: 13 }} /> Inspect
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             );
@@ -457,6 +486,15 @@ export default function ProjectsPage({ lightMode }) {
         accounts={accounts}
         tasks={tasks}
         lightMode={lightMode}
+      />
+
+      {/* Render Live Real-Time Chat Modal */}
+      <ProjectChatModal
+        isOpen={chatModalOpen}
+        onClose={() => setChatModalOpen(false)}
+        projectId={chatProject ? Number(chatProject.ProjectId || chatProject.projectId) : null}
+        projectName={chatProject ? (chatProject.ProjectName || chatProject.projectName) : ''}
+        isDark={!lightMode}
       />
 
     </div>

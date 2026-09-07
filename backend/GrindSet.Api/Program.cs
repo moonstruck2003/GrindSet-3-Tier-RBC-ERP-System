@@ -2,6 +2,8 @@ using GrindSet.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using GrindSet.Api.Models;
 using GrindSet.Api.Services;
+using GrindSet.Api.Hubs;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -64,8 +66,22 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = JwtTokenService.Audience,
         IssuerSigningKey = new SymmetricSecurityKey(jwtKey)
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
+    };
 });
 builder.Services.AddAuthorization();
+builder.Services.AddSignalR();
 
 // Configure CORS for 3-member local WFH developer ports
 builder.Services.AddCors(options =>
@@ -97,6 +113,9 @@ if (app.Environment.IsDevelopment() || true)
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Real-Time SignalR WebSockets Hub
+app.MapHub<ProjectChatHub>("/hubs/project-chat");
 
 // Auto-migrate and seed database on startup
 using (var scope = app.Services.CreateScope())
@@ -336,6 +355,28 @@ app.MapPost("/api/employees", async (GrindSetDbContext db, ClaimsPrincipal princ
     if (auth.IsEmployee) return Results.Forbid();
 
     int compId = auth.IsCompany ? auth.CompanyId!.Value : 1;
+
+    // Check tier limits for company
+    var limits = await GetCompanyTierLimitsAsync(db, compId);
+    if (limits.MaxEmployees.HasValue)
+    {
+        var currentEmployees = await (from empItem in db.Employees
+                                      join uItem in db.Users on empItem.EmployeeId equals uItem.UserId
+                                      where empItem.CompanyId == compId && uItem.ApprovalStatus == "Approved"
+                                      select empItem).CountAsync();
+        if (currentEmployees >= limits.MaxEmployees.Value)
+        {
+            return Results.BadRequest(new
+            {
+                message = $"Your organization has reached the limit of {limits.MaxEmployees.Value} employees on the {limits.Tier} tier. Upgrade to {(limits.Tier == "Free" ? "Professional ($15/mo) or Enterprise ($29/mo)" : "Enterprise ($29/mo)")} in Billing & Plans to onboard more employees.",
+                code = "TIER_LIMIT_EXCEEDED",
+                tier = limits.Tier,
+                current = currentEmployees,
+                max = limits.MaxEmployees.Value,
+                resource = "Employees"
+            });
+        }
+    }
 
     // Create User first
     var user = new User
@@ -683,7 +724,7 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
 
     string initialApproval = dbRole switch
     {
-        "Company" => "PendingAdmin",
+        "Company" => "Approved",
         "Employee" => "PendingCompany",
         _ => "Approved"
     };
@@ -705,16 +746,46 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
 
     if (dbRole == "Company")
     {
-        compId = user.UserId;
-        var company = new Company
+        // Check if claiming/joining an existing company tenancy
+        if (dto.CompanyId.HasValue && await db.Companies.AnyAsync(c => c.CompanyId == dto.CompanyId.Value))
         {
-            CompanyId = user.UserId,
-            CompanyName = string.IsNullOrWhiteSpace(dto.CompanyName) ? $"{displayName}'s Organization" : dto.CompanyName.Trim(),
-            RegistrationNo = $"REG-{Random.Shared.Next(100000, 999999)}",
-            Industry = string.IsNullOrWhiteSpace(dto.Industry) ? "Technology & Software" : dto.Industry.Trim(),
-            LicenseStatus = "PendingAdminApproval"
-        };
-        db.Companies.Add(company);
+            compId = dto.CompanyId.Value;
+        }
+        else
+        {
+            compId = user.UserId;
+            var companyName = string.IsNullOrWhiteSpace(dto.CompanyName) ? $"{displayName}'s Organization" : dto.CompanyName.Trim();
+            var company = new Company
+            {
+                CompanyId = user.UserId,
+                CompanyName = companyName,
+                RegistrationNo = $"REG-{Random.Shared.Next(100000, 999999)}",
+                Industry = string.IsNullOrWhiteSpace(dto.Industry) ? "Technology & Software" : dto.Industry.Trim(),
+                LicenseStatus = "Active"
+            };
+            db.Companies.Add(company);
+
+            // Default executive department
+            db.Departments.Add(new Department
+            {
+                CompanyId = user.UserId,
+                DepartmentName = "Executive & Operations"
+            });
+
+            // Default Community Free subscription
+            db.Subscriptions.Add(new CompanySubscription
+            {
+                CompanyId = user.UserId,
+                PlanTier = "Free",
+                BillingCycle = "Monthly",
+                Price = 0.00m,
+                Status = "Active",
+                PaymentMethod = "Default Free Tier",
+                CurrentPeriodStart = DateTime.UtcNow,
+                CurrentPeriodEnd = DateTime.UtcNow.AddYears(1),
+                CreatedAt = DateTime.UtcNow
+            });
+        }
     }
     else if (dbRole == "Admin")
     {
@@ -1210,6 +1281,28 @@ app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbC
     if (emp == null) return Results.NotFound(new { message = "Employee not found." });
     if (!auth.IsAdmin && emp.CompanyId != auth.CompanyId) return Results.Forbid();
 
+    int targetCompanyId = emp.CompanyId;
+    var limits = await GetCompanyTierLimitsAsync(db, targetCompanyId);
+    if (limits.MaxEmployees.HasValue)
+    {
+        var approvedCount = await (from empItem in db.Employees
+                                   join uItem in db.Users on empItem.EmployeeId equals uItem.UserId
+                                   where empItem.CompanyId == targetCompanyId && uItem.ApprovalStatus == "Approved"
+                                   select empItem).CountAsync();
+        if (approvedCount >= limits.MaxEmployees.Value)
+        {
+            return Results.BadRequest(new
+            {
+                message = $"Cannot approve employee: your organization has reached the limit of {limits.MaxEmployees.Value} employees on the {limits.Tier} tier. Upgrade to {(limits.Tier == "Free" ? "Professional ($15/mo) or Enterprise ($29/mo)" : "Enterprise ($29/mo)")} in Billing & Plans to expand your workforce capacity.",
+                code = "TIER_LIMIT_EXCEEDED",
+                tier = limits.Tier,
+                current = approvedCount,
+                max = limits.MaxEmployees.Value,
+                resource = "Employees"
+            });
+        }
+    }
+
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId && u.Role == "Employee");
     if (user == null) return Results.NotFound(new { message = "Employee user not found." });
 
@@ -1314,6 +1407,25 @@ app.MapPost("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princi
     }
 
     int companyId = auth.IsCompany ? auth.CompanyId!.Value : (dto.CompanyId > 0 ? dto.CompanyId : 1);
+
+    // Check tier limits for company
+    var limits = await GetCompanyTierLimitsAsync(db, companyId);
+    if (limits.MaxProjects.HasValue)
+    {
+        var existingProjectsCount = await db.Projects.CountAsync(p => p.CompanyId == companyId);
+        if (existingProjectsCount >= limits.MaxProjects.Value)
+        {
+            return Results.BadRequest(new
+            {
+                message = $"Your organization has reached the limit of {limits.MaxProjects.Value} {(limits.MaxProjects.Value == 1 ? "project" : "projects")} on the {limits.Tier} tier. Upgrade to {(limits.Tier == "Free" ? "Professional ($15/mo) or Enterprise ($29/mo)" : "Enterprise ($29/mo)")} in Billing & Plans to create more projects.",
+                code = "TIER_LIMIT_EXCEEDED",
+                tier = limits.Tier,
+                current = existingProjectsCount,
+                max = limits.MaxProjects.Value,
+                resource = "Projects"
+            });
+        }
+    }
 
     var project = new Project
     {
@@ -1576,6 +1688,175 @@ app.MapDelete("/api/projects/{id:int}/members/{employeeId:int}", async (GrindSet
     }
 
     return Results.Ok(new { message = "Member removed from project roster successfully." });
+});
+
+// GET /api/projects/{id}/chat/messages - Retrieve message history and chat metadata
+app.MapGet("/api/projects/{id:int}/chat/messages", async (GrindSetDbContext db, ClaimsPrincipal principal, int id) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    var project = await db.Projects.FindAsync(id);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+
+    bool isAuthorized = false;
+    if (auth.IsAdmin) isAuthorized = true;
+    else if (auth.IsCompany && auth.CompanyId == project.CompanyId) isAuthorized = true;
+    else if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        if (project.ProjectManagerId == empId) isAuthorized = true;
+        else
+        {
+            bool isAssigned = await db.ProjectAssignments.AnyAsync(a => a.ProjectId == id && a.EmployeeId == empId);
+            if (isAssigned) isAuthorized = true;
+        }
+    }
+
+    if (!isAuthorized)
+    {
+        return Results.Json(new { message = "Access Denied. You must be the Project Manager or an assigned team member on this project to view discussions." }, statusCode: 403);
+    }
+
+    string pmName = "Unassigned PM";
+    string pmEmail = "";
+    string pmDesignation = "";
+    if (project.ProjectManagerId.HasValue)
+    {
+        var pmEmp = await db.Employees.FindAsync(project.ProjectManagerId.Value);
+        if (pmEmp != null)
+        {
+            pmName = pmEmp.FullName;
+            pmDesignation = pmEmp.Designation;
+            var pmUser = await db.Users.FindAsync(pmEmp.EmployeeId);
+            pmEmail = pmUser?.Email ?? "";
+        }
+    }
+
+    var members = await (from a in db.ProjectAssignments
+                         where a.ProjectId == id
+                         join e in db.Employees on a.EmployeeId equals e.EmployeeId
+                         join u in db.Users on e.EmployeeId equals u.UserId
+                         select new
+                         {
+                             e.EmployeeId,
+                             e.FullName,
+                             e.Designation,
+                             u.Email,
+                             a.RoleInProject,
+                             IsProjectManager = project.ProjectManagerId == e.EmployeeId
+                         }).ToListAsync();
+
+    var messages = await db.ProjectChatMessages
+        .Where(m => m.ProjectId == id)
+        .OrderBy(m => m.SentAt)
+        .Take(200)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        projectId = id,
+        projectName = project.ProjectName,
+        projectManagerId = project.ProjectManagerId,
+        projectManagerName = pmName,
+        projectManagerEmail = pmEmail,
+        projectManagerDesignation = pmDesignation,
+        currentUserId = auth.UserId,
+        currentUserRole = auth.Role,
+        isProjectManager = auth.IsEmployee && project.ProjectManagerId == (auth.EmployeeId ?? auth.UserId),
+        members = members,
+        messages = messages
+    });
+});
+
+// POST /api/projects/{id}/chat/messages - Send chat message (broadcasts real-time via SignalR)
+app.MapPost("/api/projects/{id:int}/chat/messages", async (GrindSetDbContext db, IHubContext<ProjectChatHub> hubContext, ClaimsPrincipal principal, int id, SendChatMessageDto dto) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(dto.MessageText))
+    {
+        return Results.BadRequest(new { message = "Message content cannot be empty." });
+    }
+
+    if (dto.MessageText.Trim().Length > 2000)
+    {
+        return Results.BadRequest(new { message = "Message exceeds maximum length of 2000 characters." });
+    }
+
+    var project = await db.Projects.FindAsync(id);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+
+    string senderName = "User";
+    string senderRole = "Member";
+    bool isAuthorized = false;
+
+    if (auth.IsAdmin)
+    {
+        isAuthorized = true;
+        senderName = "System Administrator";
+        senderRole = "SuperAdmin";
+    }
+    else if (auth.IsCompany && auth.CompanyId == project.CompanyId)
+    {
+        isAuthorized = true;
+        var comp = await db.Companies.FindAsync(project.CompanyId);
+        senderName = comp?.CompanyName ?? "Company Owner";
+        senderRole = "Company Owner";
+    }
+    else if (auth.IsEmployee)
+    {
+        int empId = auth.EmployeeId ?? auth.UserId;
+        var emp = await db.Employees.FindAsync(empId);
+        if (emp != null && emp.CompanyId == project.CompanyId)
+        {
+            bool isPm = project.ProjectManagerId == empId;
+            bool isAssigned = isPm || await db.ProjectAssignments.AnyAsync(a => a.ProjectId == id && a.EmployeeId == empId);
+
+            if (isAssigned)
+            {
+                isAuthorized = true;
+                senderName = emp.FullName;
+                senderRole = isPm ? "Project Manager" : (emp.Designation ?? "Team Member");
+            }
+        }
+    }
+
+    if (!isAuthorized)
+    {
+        return Results.Json(new { message = "Access Denied. Only the Project Manager and assigned team members can chat on this project." }, statusCode: 403);
+    }
+
+    var user = await db.Users.FindAsync(auth.UserId);
+    var chatMsg = new ProjectChatMessage
+    {
+        ProjectId = id,
+        SenderUserId = auth.UserId,
+        SenderName = senderName,
+        SenderEmail = user?.Email ?? "",
+        SenderRole = senderRole,
+        MessageText = dto.MessageText.Trim(),
+        SentAt = DateTime.UtcNow
+    };
+
+    db.ProjectChatMessages.Add(chatMsg);
+    await db.SaveChangesAsync();
+
+    // Broadcast via SignalR to group
+    await hubContext.Clients.Group($"project_{id}").SendAsync("ReceiveChatMessage", new
+    {
+        messageId = chatMsg.MessageId,
+        projectId = chatMsg.ProjectId,
+        senderUserId = chatMsg.SenderUserId,
+        senderName = chatMsg.SenderName,
+        senderEmail = chatMsg.SenderEmail,
+        senderRole = chatMsg.SenderRole,
+        messageText = chatMsg.MessageText,
+        sentAt = chatMsg.SentAt
+    });
+
+    return Results.Created($"/api/projects/{id}/chat/messages/{chatMsg.MessageId}", chatMsg);
 });
 
 // GET /api/tasks - Get tasks scoped by tenant/role
@@ -2125,11 +2406,13 @@ app.MapGet("/api/subscription/plans", () =>
         {
             Id = "Free",
             Name = "Community Edition",
-            Tagline = "Essential ERP tools for small engineering squads",
+            Tagline = "Essential ERP tools for small squads (1 project & up to 10 employees)",
             MonthlyPrice = 0m,
             YearlyPrice = 0m,
             Features = new[]
             {
+                "Limit: 1 Active Project",
+                "Limit: Up to 10 Employees",
                 "Full 3-Tier RBC Enterprise Access",
                 "Standard Kanban Sprint Boards",
                 "Expense Claim Submission & Tracking",
@@ -2143,13 +2426,14 @@ app.MapGet("/api/subscription/plans", () =>
         {
             Id = "Pro",
             Name = "Professional Tier",
-            Tagline = "Accelerate workforce scale & high-velocity project delivery",
-            MonthlyPrice = 29m,
-            YearlyPrice = 290m,
+            Tagline = "Accelerate workforce scale: up to 5 projects & 30 team seats",
+            MonthlyPrice = 15m,
+            YearlyPrice = 150m,
             Features = new[]
             {
+                "Limit: Up to 5 Active Projects",
+                "Limit: Up to 30 Employees",
                 "Everything in Community Free",
-                "Unlimited Team Member Seats",
                 "Priority Financial CSV & Ledger Exports",
                 "Extended 1-Year Audit Log Retention",
                 "Sprint Velocity & Analytics Insights",
@@ -2162,14 +2446,15 @@ app.MapGet("/api/subscription/plans", () =>
         {
             Id = "Enterprise",
             Name = "Enterprise Suite",
-            Tagline = "Advanced governance, custom SLA & global financial operations",
-            MonthlyPrice = 99m,
-            YearlyPrice = 990m,
+            Tagline = "Advanced governance, unlimited scale & global financial operations",
+            MonthlyPrice = 29m,
+            YearlyPrice = 290m,
             Features = new[]
             {
+                "Unlimited Projects (No Limits)",
+                "Unlimited Employees (No Limits)",
                 "Everything in Professional Tier",
                 "Unlimited Multi-Department Allocations",
-                "AI Workforce & Predictive Analytics",
                 "Dedicated System Security SLA",
                 "Custom Automated Webhook Integrations",
                 "Elite Enterprise Tenant Status"
@@ -2216,11 +2501,26 @@ app.MapGet("/api/subscription/current", async (GrindSetDbContext db, ClaimsPrinc
         .Take(10)
         .ToListAsync();
 
+    var limits = await GetCompanyTierLimitsAsync(db, compId);
+    var projectsCount = await db.Projects.CountAsync(p => p.CompanyId == compId);
+    var employeesCount = await (from empItem in db.Employees
+                                join uItem in db.Users on empItem.EmployeeId equals uItem.UserId
+                                where empItem.CompanyId == compId && uItem.ApprovalStatus == "Approved"
+                                select empItem).CountAsync();
+
     return Results.Ok(new
     {
         subscription = sub,
         companyName = company?.CompanyName ?? "Organization",
-        invoices = invoices
+        invoices = invoices,
+        usage = new
+        {
+            tier = limits.Tier,
+            projectsCount = projectsCount,
+            maxProjects = limits.MaxProjects,
+            employeesCount = employeesCount,
+            maxEmployees = limits.MaxEmployees
+        }
     });
 });
 
@@ -2249,8 +2549,8 @@ app.MapPost("/api/subscription/checkout", async (GrindSetDbContext db, ClaimsPri
 
     decimal price = targetTier switch
     {
-        "Pro" => targetCycle == "Yearly" ? 290.00m : 29.00m,
-        "Enterprise" => targetCycle == "Yearly" ? 990.00m : 99.00m,
+        "Pro" => targetCycle == "Yearly" ? 150.00m : 15.00m,
+        "Enterprise" => targetCycle == "Yearly" ? 290.00m : 29.00m,
         _ => 0.00m
     };
 
@@ -2400,7 +2700,10 @@ static async Task<AuthUserContext> GetAuthContextAsync(ClaimsPrincipal? principa
 
     if (role == "Company")
     {
-        companyId = userId;
+        if (!companyId.HasValue)
+        {
+            companyId = userId;
+        }
     }
     else if (role == "Employee")
     {
@@ -2413,6 +2716,19 @@ static async Task<AuthUserContext> GetAuthContextAsync(ClaimsPrincipal? principa
     }
 
     return new AuthUserContext(true, userId, role, companyId, employeeId);
+}
+
+static async Task<TierLimits> GetCompanyTierLimitsAsync(GrindSetDbContext db, int companyId)
+{
+    var sub = await db.Subscriptions.FirstOrDefaultAsync(s => s.CompanyId == companyId);
+    string tier = (sub != null && sub.Status == "Active") ? sub.PlanTier : "Free";
+
+    return tier switch
+    {
+        "Pro" => new TierLimits("Pro", 5, 30),
+        "Enterprise" => new TierLimits("Enterprise", null, null),
+        _ => new TierLimits("Free", 1, 10)
+    };
 }
 
 // DTO Records
@@ -2433,6 +2749,8 @@ public record ExpenseClaimDto(int AccountId, int EmployeeId, string Type, decima
 public record SubscriptionCheckoutDto(string PlanTier, string BillingCycle, string? CardholderName, string? CardLast4, string? PaymentMethodToken);
 public record ForgotPasswordDto(string Email);
 public record ResetPasswordDto(string Token, string NewPassword);
+public record TierLimits(string Tier, int? MaxProjects, int? MaxEmployees);
+public record SendChatMessageDto(string MessageText);
 
 // Auth Context
 public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int? CompanyId, int? EmployeeId)
@@ -2441,5 +2759,3 @@ public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int
     public bool IsCompany => Role == "Company";
     public bool IsEmployee => Role == "Employee";
 }
-
-
