@@ -65,6 +65,24 @@ namespace GrindSet.Api.Data
             }
             catch { /* column already exists */ }
 
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Projects"" ADD COLUMN ""ProjectManagerId"" INTEGER NULL;");
+            }
+            catch { /* column already exists */ }
+
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""ApprovalStatus"" TEXT NOT NULL DEFAULT 'Approved';");
+            }
+            catch { /* column already exists */ }
+
+            try
+            {
+                context.Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""ReportedNote"" TEXT NULL;");
+            }
+            catch { /* column already exists */ }
+
             // Seed Base SuperAdmin
             var adminUser = EnsureUser(context, "admin@grindset.io", "Admin");
             if (!context.Admins.Any(a => a.AdminId == adminUser.UserId))

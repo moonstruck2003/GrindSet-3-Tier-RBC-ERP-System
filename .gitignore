@@ -33,10 +33,11 @@ backend/**/out/
 *.swp
 *~
 
-# Operating System Files
+# Operating System & Office Temp Files
 Thumbs.db
 Desktop.ini
 .DS_Store
+~$*
 
 # SQLite Database Files (Runtime locks ignored, main db ignored if local)
 *.db-shm

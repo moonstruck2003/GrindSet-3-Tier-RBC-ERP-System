@@ -1955,6 +1955,11 @@ app.MapPost("/api/tasks", async (GrindSetDbContext db, ClaimsPrincipal principal
         return Results.BadRequest(new { message = "Task Title is required." });
     }
 
+    if (dto.StoryPoints < 0 || dto.StoryPoints > 100)
+    {
+        return Results.BadRequest(new { message = "Story points must be between 0 and 100 per individual task." });
+    }
+
     var project = await db.Projects.FindAsync(dto.ProjectId);
     if (project == null)
     {
@@ -2191,6 +2196,10 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, ClaimsPrinci
 
     if (dto.Amount <= 0) return Results.BadRequest(new { message = "Reallocation amount must be greater than zero." });
     if (string.IsNullOrWhiteSpace(dto.Reason)) return Results.BadRequest(new { message = "Reason is required for audit reallocation." });
+    if (dto.SourceAccountId == dto.TargetAccountId)
+    {
+        return Results.BadRequest(new { message = "Source and target financial accounts cannot be identical for fund reallocation." });
+    }
 
     var source = await db.FinancialAccounts.FindAsync(dto.SourceAccountId);
     var target = await db.FinancialAccounts.FindAsync(dto.TargetAccountId);

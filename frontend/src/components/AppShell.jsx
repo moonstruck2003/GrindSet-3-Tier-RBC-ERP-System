@@ -209,7 +209,7 @@ export default function AppShell({ children, lightMode, setLightMode }) {
 
         {/* Logo area */}
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${T.sidebarBdr}` }}>
-          <NavLink to="/" style={{ display: 'block', textDecoration: 'none' }}>
+          <NavLink to={currentUser ? "/dashboard" : "/"} style={{ display: 'block', textDecoration: 'none' }}>
             <GrindsetLogoNodes isDark={!lightMode} style={{ width: 140, height: 'auto' }} />
           </NavLink>
 
