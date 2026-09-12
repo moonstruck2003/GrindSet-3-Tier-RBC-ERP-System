@@ -9,6 +9,7 @@ import {
 import { api } from '../config/api';
 import FundReallocationModal from '../components/FundReallocationModal';
 import ExpenseClaimModal from '../components/ExpenseClaimModal';
+import CreateAccountModal from '../components/CreateAccountModal';
 
 export default function FinancePage({ lightMode }) {
   const [user, setUser] = useState(null);
@@ -26,6 +27,7 @@ export default function FinancePage({ lightMode }) {
   // Modals state
   const [reallocModalOpen, setReallocModalOpen] = useState(false);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
+  const [createAccountModalOpen, setCreateAccountModalOpen] = useState(false);
   const [modalTargetProjectId, setModalTargetProjectId] = useState(null);
 
   // Timesheet calculator state (Employee)
@@ -166,6 +168,16 @@ export default function FinancePage({ lightMode }) {
                 <Download style={{ width: 14, height: 14 }} /> Download Master CSV
               </button>
             </a>
+
+            {(isCfoScope || isPM) && (
+              <button
+                onClick={() => { setModalTargetProjectId(null); setCreateAccountModalOpen(true); }}
+                className="btn-primary"
+                style={{ padding: '9px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, background: '#0052CC', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Plus style={{ width: 14, height: 14 }} /> New Financial Account
+              </button>
+            )}
 
             {isCfoScope && (
               <button
@@ -319,6 +331,16 @@ export default function FinancePage({ lightMode }) {
                             <Download style={{ width: 13, height: 13 }} /> Export {projName} CSV
                           </button>
                         </a>
+
+                        {(isCfoScope || managedProjectIds.has(projId)) && (
+                          <button
+                            onClick={() => { setModalTargetProjectId(projId); setCreateAccountModalOpen(true); }}
+                            className="btn-ghost"
+                            style={{ padding: '7px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+                          >
+                            <Plus style={{ width: 13, height: 13 }} /> Add Account
+                          </button>
+                        )}
 
                         <button
                           onClick={() => { setModalTargetProjectId(projId); setClaimModalOpen(true); }}
@@ -719,9 +741,24 @@ export default function FinancePage({ lightMode }) {
       )}
 
       {/* Render Modals */}
+      <CreateAccountModal
+        isOpen={createAccountModalOpen}
+        onClose={() => {
+          setCreateAccountModalOpen(false);
+          setModalTargetProjectId(null);
+        }}
+        projects={projects}
+        targetProjectId={modalTargetProjectId}
+        onAccountCreated={loadFinanceData}
+        lightMode={lightMode}
+      />
+
       <FundReallocationModal
         isOpen={reallocModalOpen}
-        onClose={() => setReallocModalOpen(false)}
+        onClose={() => {
+          setReallocModalOpen(false);
+          setModalTargetProjectId(null);
+        }}
         accounts={accounts}
         projects={projects}
         onReallocated={loadFinanceData}
@@ -730,7 +767,10 @@ export default function FinancePage({ lightMode }) {
 
       <ExpenseClaimModal
         isOpen={claimModalOpen}
-        onClose={() => setClaimModalOpen(false)}
+        onClose={() => {
+          setClaimModalOpen(false);
+          setModalTargetProjectId(null);
+        }}
         accounts={accounts}
         projects={projects}
         user={user}

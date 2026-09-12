@@ -163,7 +163,8 @@ export default function FundReallocationModal({ isOpen, onClose, accounts = [], 
             <input
               type="number"
               required
-              step="100"
+              min="0.01"
+              step="any"
               placeholder="10000"
               className="gs-input"
               style={{ background: inputBg, color: textPri, borderColor: border }}
