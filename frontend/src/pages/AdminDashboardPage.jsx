@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield, Building2, Users, CheckCircle2, XCircle, AlertTriangle,
-  FileText, Search, Activity, Ban, Flag, ShieldAlert, Sparkles, RefreshCw
+  FileText, Search, Activity, Ban, Flag, ShieldAlert, Sparkles, RefreshCw, Trash2
 } from 'lucide-react';
 import { api } from '../config/api';
 
@@ -70,6 +70,18 @@ export default function AdminDashboardPage({ lightMode }) {
     }
   };
 
+  const handleDeleteCompany = async (companyId, companyName) => {
+    if (!window.confirm(`Are you sure you want to permanently remove "${companyName}" and all associated workspaces, projects, and employees?`)) return;
+    try {
+      const res = await api.deleteCompany(companyId);
+      setActionMsg(res.message || `Company removed successfully.`);
+      setTimeout(() => setActionMsg(''), 4000);
+      loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to remove company');
+    }
+  };
+
   const handleBlockEmployee = async (employeeId) => {
     try {
       const res = await api.blockEmployee(employeeId);
@@ -78,6 +90,18 @@ export default function AdminDashboardPage({ lightMode }) {
       loadData();
     } catch (err) {
       alert(err.message || 'Action failed');
+    }
+  };
+
+  const handleDeleteEmployee = async (employeeId, name) => {
+    if (!window.confirm(`Are you sure you want to permanently remove employee "${name}" from the platform?`)) return;
+    try {
+      const res = await api.deleteEmployee(employeeId);
+      setActionMsg(res.message || `Employee removed successfully.`);
+      setTimeout(() => setActionMsg(''), 4000);
+      loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to remove employee');
     }
   };
 
@@ -350,7 +374,19 @@ export default function AdminDashboardPage({ lightMode }) {
                             display: 'flex', alignItems: 'center', gap: 4
                           }}
                         >
-                          <Flag style={{ width: 12, height: 12 }} /> Report to Company
+                          <Flag style={{ width: 12, height: 12 }} /> Report
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteEmployee(empId, name)}
+                          style={{
+                            padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                            background: 'rgba(255,86,48,0.15)', color: '#FF5630', border: '1px solid rgba(255,86,48,0.3)',
+                            display: 'flex', alignItems: 'center', gap: 4
+                          }}
+                          title="Permanently remove employee from platform"
+                        >
+                          <Trash2 style={{ width: 12, height: 12 }} /> Remove
                         </button>
                       </div>
                     </td>
@@ -383,6 +419,7 @@ export default function AdminDashboardPage({ lightMode }) {
                 <th>License Status</th>
                 <th>Employees</th>
                 <th>Projects</th>
+                <th style={{ textAlign: 'right' }}>Admin Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -403,6 +440,19 @@ export default function AdminDashboardPage({ lightMode }) {
                   </td>
                   <td style={{ fontWeight: 700 }}>{comp.employeeCount || 0}</td>
                   <td style={{ fontWeight: 700 }}>{comp.projectCount || 0}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      onClick={() => handleDeleteCompany(comp.companyId, comp.companyName)}
+                      style={{
+                        padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: 'rgba(255,86,48,0.15)', color: '#FF5630', border: '1px solid rgba(255,86,48,0.3)',
+                        display: 'inline-flex', alignItems: 'center', gap: 4
+                      }}
+                      title="Permanently remove company and all its data"
+                    >
+                      <Trash2 style={{ width: 12, height: 12 }} /> Remove Company
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

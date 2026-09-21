@@ -57,6 +57,12 @@ export default function ProjectChatModal({ isOpen, onClose, projectId, projectNa
   useEffect(() => {
     if (!isOpen || !projectId) return;
 
+    if (currentUser?.role === 'Admin') {
+      setError('Access Restricted: System Administrators can only inspect project metadata and cannot access internal project communications.');
+      setLoading(false);
+      return;
+    }
+
     loadChatData();
 
     // Initialize SignalR connection

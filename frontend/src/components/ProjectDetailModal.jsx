@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FolderKanban, X, Target, FileText, DollarSign, Users,
   CheckSquare, Coins, Calendar, ArrowRight, Plus, UserPlus,
-  Trash2, Lock, Sparkles, MessageSquare
+  Trash2, Lock, Sparkles, MessageSquare, Shield
 } from 'lucide-react';
 import { api } from '../config/api';
 import ProjectChatModal from './ProjectChatModal';
@@ -35,10 +35,11 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
   const pmName = project.projectManagerName || project.ProjectManagerName || 'Unassigned';
   const pmId = project.projectManagerId || project.ProjectManagerId;
 
-  const isCompany = user?.role === 'Company' || user?.role === 'Admin';
+  const isAdmin = user?.role === 'Admin';
+  const isCompany = user?.role === 'Company';
   const isPM = (pmId && Number(pmId) === Number(user?.userId)) || project.isManager || project.IsManager;
   const isMember = isCompany || isPM || project.isMember || project.IsMember || members.some(m => Number(m.employeeId || m.EmployeeId) === Number(user?.userId));
-  const canManageTeam = isCompany || isPM;
+  const canManageTeam = !isAdmin && (isCompany || isPM);
 
   const loadMembers = async () => {
     setLoadingMembers(true);
@@ -125,7 +126,11 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
                 <span className={`pill ${projStatus === 'In Progress' ? 'pill-blue' : 'pill-green'}`}>
                   {projStatus}
                 </span>
-                {isPM ? (
+                {isAdmin ? (
+                  <span className="pill pill-purple" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Shield style={{ width: 11, height: 11 }} /> System Admin Oversight
+                  </span>
+                ) : isPM ? (
                   <span className="pill pill-gold" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Sparkles style={{ width: 11, height: 11 }} /> You are Project Manager
                   </span>
@@ -142,27 +147,29 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button
-              onClick={() => setShowChatModal(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 14px',
-                borderRadius: 8,
-                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.25))',
-                border: '1px solid rgba(99, 102, 241, 0.45)',
-                color: '#818CF8',
-                fontWeight: 700,
-                fontSize: 12,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-              title="Open Real-time Project Chat (SignalR)"
-            >
-              <MessageSquare style={{ width: 14, height: 14 }} />
-              <span>💬 Live Chat</span>
-            </button>
+            {!isAdmin && (
+              <button
+                onClick={() => setShowChatModal(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 14px',
+                  borderRadius: 8,
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.25))',
+                  border: '1px solid rgba(99, 102, 241, 0.45)',
+                  color: '#818CF8',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Open Real-time Project Chat (SignalR)"
+              >
+                <MessageSquare style={{ width: 14, height: 14 }} />
+                <span>💬 Live Chat</span>
+              </button>
+            )}
 
             <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: textMut }}>
               <X style={{ width: 20, height: 20 }} />
@@ -170,15 +177,22 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
           </div>
         </div>
 
-        {/* Non-Member Banner */}
-        {!isMember && (
+        {/* Admin / Non-Member Banner */}
+        {isAdmin ? (
+          <div style={{ margin: '16px 24px 0', padding: '12px 16px', borderRadius: 12, background: 'rgba(101,84,192,0.12)', border: '1px solid rgba(101,84,192,0.25)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Shield style={{ width: 16, height: 16, color: '#BF9AFF', flexShrink: 0 }} />
+            <div style={{ fontSize: 12, color: textPri }}>
+              <strong>System Administrator Project Inspection:</strong> You are viewing high-level project name, timeline status, total budget, scope description, and strategic objectives. Internal team communications and operational funds are managed by project team members.
+            </div>
+          </div>
+        ) : !isMember ? (
           <div style={{ margin: '16px 24px 0', padding: '12px 16px', borderRadius: 12, background: 'rgba(0,82,204,0.08)', border: '1px solid rgba(0,82,204,0.2)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <Lock style={{ width: 16, height: 16, color: '#4C9AFF', flexShrink: 0 }} />
             <div style={{ fontSize: 12, color: textPri }}>
               <strong>Read-Only Overview (Non-Member):</strong> You are not currently assigned to this project. Operating account details and task creation are managed by Project Manager <strong>{pmName}</strong>.
             </div>
           </div>
-        )}
+        ) : null}
 
         {actionMsg && (
           <div style={{ margin: '12px 24px 0', padding: '10px 14px', borderRadius: 10, background: 'rgba(54,179,126,0.15)', border: '1px solid rgba(54,179,126,0.3)', color: '#57D9A3', fontSize: 12, fontWeight: 700 }}>

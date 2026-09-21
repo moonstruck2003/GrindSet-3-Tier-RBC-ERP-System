@@ -1287,6 +1287,143 @@ app.MapPost("/api/admin/report-employee/{employeeId:int}", async (GrindSetDbCont
     return Results.Ok(new { message = "Employee reported to Company.", employeeId, reportedNote = user.ReportedNote });
 });
 
+// DELETE /api/admin/companies/{companyId} - Permanently remove company and its workspace
+app.MapDelete("/api/admin/companies/{companyId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int companyId) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsAdmin) return Results.Forbid();
+
+    var company = await db.Companies.FirstOrDefaultAsync(c => c.CompanyId == companyId);
+    if (company == null) return Results.NotFound(new { message = "Company not found." });
+
+    string companyName = company.CompanyName;
+
+    // 1. Remove company projects and project-related data
+    var projects = await db.Projects.Where(p => p.CompanyId == companyId).ToListAsync();
+    var projectIds = projects.Select(p => p.ProjectId).ToList();
+
+    if (projectIds.Count > 0)
+    {
+        var tasks = await db.Tasks.Where(t => projectIds.Contains(t.ProjectId)).ToListAsync();
+        db.Tasks.RemoveRange(tasks);
+
+        var assignments = await db.ProjectAssignments.Where(a => projectIds.Contains(a.ProjectId)).ToListAsync();
+        db.ProjectAssignments.RemoveRange(assignments);
+
+        var scopes = await db.ProjectScopes.Where(s => projectIds.Contains(s.ProjectId)).ToListAsync();
+        db.ProjectScopes.RemoveRange(scopes);
+
+        var accounts = await db.FinancialAccounts.Where(a => projectIds.Contains(a.ProjectId)).ToListAsync();
+        var accountIds = accounts.Select(a => a.AccountId).ToList();
+        if (accountIds.Count > 0)
+        {
+            var txs = await db.Transactions.Where(t => accountIds.Contains(t.AccountId)).ToListAsync();
+            db.Transactions.RemoveRange(txs);
+            var reallocs = await db.FundReallocations.Where(r => projectIds.Contains(r.ProjectId)).ToListAsync();
+            db.FundReallocations.RemoveRange(reallocs);
+        }
+        db.FinancialAccounts.RemoveRange(accounts);
+
+        var chatMsgs = await db.ProjectChatMessages.Where(m => projectIds.Contains(m.ProjectId)).ToListAsync();
+        db.ProjectChatMessages.RemoveRange(chatMsgs);
+
+        db.Projects.RemoveRange(projects);
+    }
+
+    // 2. Remove employees of this company
+    var employees = await db.Employees.Where(e => e.CompanyId == companyId).ToListAsync();
+    var employeeUserIds = employees.Select(e => e.EmployeeId).ToList();
+    db.Employees.RemoveRange(employees);
+
+    // 3. Remove users belonging to this company (employees + company owner)
+    var companyUsers = await db.Users.Where(u => u.CompanyId == companyId || u.UserId == companyId || employeeUserIds.Contains(u.UserId)).ToListAsync();
+    db.Users.RemoveRange(companyUsers);
+
+    // 4. Remove departments
+    var depts = await db.Departments.Where(d => d.CompanyId == companyId).ToListAsync();
+    db.Departments.RemoveRange(depts);
+
+    // 5. Remove subscriptions and invoices
+    var subs = await db.Subscriptions.Where(s => s.CompanyId == companyId).ToListAsync();
+    db.Subscriptions.RemoveRange(subs);
+    var invoices = await db.SubscriptionInvoices.Where(i => i.CompanyId == companyId).ToListAsync();
+    db.SubscriptionInvoices.RemoveRange(invoices);
+
+    // 6. Remove the company record
+    db.Companies.Remove(company);
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = auth.UserId,
+        Action = "ADMIN_DELETE_COMPANY",
+        TargetEntity = $"Company:{companyName} (Id:{companyId}) permanently removed by System Admin.",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = $"Company '{companyName}' and its associated records were removed successfully.", companyId });
+});
+
+// DELETE /api/admin/employees/{employeeId} - Permanently remove an employee
+app.MapDelete("/api/admin/employees/{employeeId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int employeeId) =>
+{
+    var auth = await GetAuthContextAsync(principal, db);
+    if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (!auth.IsAdmin) return Results.Forbid();
+
+    var employee = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == employeeId);
+    var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId);
+
+    if (employee == null && user == null)
+    {
+        return Results.NotFound(new { message = "Employee not found." });
+    }
+
+    string empName = employee?.FullName ?? user?.Email ?? $"Employee #{employeeId}";
+
+    // Unassign tasks assigned to this employee
+    var tasks = await db.Tasks.Where(t => t.AssigneeId == employeeId).ToListAsync();
+    foreach (var t in tasks)
+    {
+        t.AssigneeId = null;
+    }
+
+    // Remove project assignments
+    var assignments = await db.ProjectAssignments.Where(a => a.EmployeeId == employeeId).ToListAsync();
+    db.ProjectAssignments.RemoveRange(assignments);
+
+    // Remove as ProjectManager from any projects
+    var managedProjects = await db.Projects.Where(p => p.ProjectManagerId == employeeId).ToListAsync();
+    foreach (var p in managedProjects)
+    {
+        p.ProjectManagerId = null;
+    }
+
+    // Remove employee record
+    if (employee != null)
+    {
+        db.Employees.Remove(employee);
+    }
+
+    // Remove user account
+    if (user != null)
+    {
+        db.Users.Remove(user);
+    }
+
+    db.SecurityAuditLogs.Add(new SecurityAuditLog
+    {
+        UserId = auth.UserId,
+        Action = "ADMIN_DELETE_EMPLOYEE",
+        TargetEntity = $"Employee:{empName} (Id:{employeeId}) permanently removed by System Admin.",
+        EventTime = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { message = $"Employee '{empName}' removed successfully.", employeeId });
+});
+
 // GET /api/company/pending-employees/{companyId}
 app.MapGet("/api/company/pending-employees/{companyId:int}", async (GrindSetDbContext db, ClaimsPrincipal principal, int companyId) =>
 {
@@ -1744,7 +1881,10 @@ app.MapGet("/api/projects/{id:int}/chat/messages", async (GrindSetDbContext db, 
     if (project == null) return Results.NotFound(new { message = "Project not found." });
 
     bool isAuthorized = false;
-    if (auth.IsAdmin) isAuthorized = true;
+    if (auth.IsAdmin)
+    {
+        return Results.Json(new { message = "Access Denied. System Administrators can only inspect high-level project metadata and cannot access internal project communications." }, statusCode: 403);
+    }
     else if (auth.IsCompany && auth.CompanyId == project.CompanyId) isAuthorized = true;
     else if (auth.IsEmployee)
     {
@@ -1819,6 +1959,11 @@ app.MapPost("/api/projects/{id:int}/chat/messages", async (GrindSetDbContext db,
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
 
+    if (auth.IsAdmin)
+    {
+        return Results.Json(new { message = "Access Denied. System Administrators cannot participate in internal project discussions." }, statusCode: 403);
+    }
+
     if (string.IsNullOrWhiteSpace(dto.MessageText))
     {
         return Results.BadRequest(new { message = "Message content cannot be empty." });
@@ -1836,13 +1981,7 @@ app.MapPost("/api/projects/{id:int}/chat/messages", async (GrindSetDbContext db,
     string senderRole = "Member";
     bool isAuthorized = false;
 
-    if (auth.IsAdmin)
-    {
-        isAuthorized = true;
-        senderName = "System Administrator";
-        senderRole = "SuperAdmin";
-    }
-    else if (auth.IsCompany && auth.CompanyId == project.CompanyId)
+    if (auth.IsCompany && auth.CompanyId == project.CompanyId)
     {
         isAuthorized = true;
         var comp = await db.Companies.FindAsync(project.CompanyId);

@@ -67,8 +67,10 @@ export const api = {
   pendingCompanies: () => apiFetch('/api/admin/pending-companies'),
   approveCompany:   (companyId) => apiFetch(`/api/admin/approve-company/${companyId}`, { method: 'POST' }),
   rejectCompany:    (companyId) => apiFetch(`/api/admin/reject-company/${companyId}`, { method: 'POST' }),
+  deleteCompany:    (companyId) => apiFetch(`/api/admin/companies/${companyId}`, { method: 'DELETE' }),
   blockEmployee:    (employeeId) => apiFetch(`/api/admin/block-employee/${employeeId}`, { method: 'POST' }),
   reportEmployee:   (employeeId, note) => apiFetch(`/api/admin/report-employee/${employeeId}`, { method: 'POST', body: JSON.stringify({ note }) }),
+  deleteEmployee:   (employeeId) => apiFetch(`/api/admin/employees/${employeeId}`, { method: 'DELETE' }),
 
   pendingEmployees: (companyId) => apiFetch(`/api/company/pending-employees/${companyId}`),
   approveEmployee:  (employeeId) => apiFetch(`/api/company/approve-employee/${employeeId}`, { method: 'POST' }),

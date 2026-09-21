@@ -32,6 +32,13 @@ export default function ProjectsPage({ lightMode }) {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  let user = null;
+  try {
+    const raw = localStorage.getItem('grindset_user');
+    if (raw) user = JSON.parse(raw);
+  } catch {}
+  const isAdmin = user?.role === 'Admin';
+
   // Presentation View: 'cards' | 'roadmap' | 'kanban'
   const [view, setView] = useState('cards');
 
@@ -110,11 +117,13 @@ export default function ProjectsPage({ lightMode }) {
 
         {/* View Switcher Pills */}
         <div style={{ display: 'flex', gap: 6, background: lightMode ? '#EAECEF' : 'rgba(255,255,255,0.06)', padding: 4, borderRadius: 12, border: `1px solid ${border}` }}>
-          {[
+          {(isAdmin ? [
+            { id: 'cards', label: '⊞ Project Directory & Details' }
+          ] : [
             { id: 'cards', label: '⊞ Portfolio Cards' },
             { id: 'roadmap', label: '🗓️ Epic Roadmap Timeline' },
             { id: 'kanban', label: '⊟ Sprint Kanban Board' },
-          ].map(v => (
+          ]).map(v => (
             <button
               key={v.id}
               onClick={() => setView(v.id)}
@@ -227,34 +236,36 @@ export default function ProjectsPage({ lightMode }) {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button
-                      onClick={() => { setChatProject(p); setChatModalOpen(true); }}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))',
-                        border: '1px solid rgba(99, 102, 241, 0.35)',
-                        color: '#818CF8',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                      title="Open Live SignalR Chat"
-                    >
-                      <MessageSquare style={{ width: 13, height: 13 }} />
-                      <span>Chat</span>
-                    </button>
+                    {!isAdmin && (
+                      <button
+                        onClick={() => { setChatProject(p); setChatModalOpen(true); }}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 8,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15))',
+                          border: '1px solid rgba(99, 102, 241, 0.35)',
+                          color: '#818CF8',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                        title="Open Live SignalR Chat"
+                      >
+                        <MessageSquare style={{ width: 13, height: 13 }} />
+                        <span>Chat</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => { setSelectedProjectForDetail(p); setDetailModalOpen(true); }}
                       className="btn-ghost"
                       style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
                     >
-                      <Eye style={{ width: 13, height: 13 }} /> Inspect
+                      <Eye style={{ width: 13, height: 13 }} /> {isAdmin ? 'View Details' : 'Inspect'}
                     </button>
                   </div>
                 </div>
@@ -489,13 +500,15 @@ export default function ProjectsPage({ lightMode }) {
       />
 
       {/* Render Live Real-Time Chat Modal */}
-      <ProjectChatModal
-        isOpen={chatModalOpen}
-        onClose={() => setChatModalOpen(false)}
-        projectId={chatProject ? Number(chatProject.ProjectId || chatProject.projectId) : null}
-        projectName={chatProject ? (chatProject.ProjectName || chatProject.projectName) : ''}
-        isDark={!lightMode}
-      />
+      {!isAdmin && (
+        <ProjectChatModal
+          isOpen={chatModalOpen}
+          onClose={() => setChatModalOpen(false)}
+          projectId={chatProject ? Number(chatProject.ProjectId || chatProject.projectId) : null}
+          projectName={chatProject ? (chatProject.ProjectName || chatProject.projectName) : ''}
+          isDark={!lightMode}
+        />
+      )}
 
     </div>
   );
