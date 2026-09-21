@@ -46,7 +46,14 @@ function theme(light) {
 export default function AppShell({ children, lightMode, setLightMode }) {
   const [apiStatus, setApiStatus] = useState('...');
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('grindset_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Top-Tier Enterprise Drawers & Modals
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -134,7 +141,7 @@ export default function AppShell({ children, lightMode, setLightMode }) {
 
   // Role-based Nav filtering
   const userRole = currentUser?.role || 'Company';
-  const isApproved = currentUser ? currentUser.approvalStatus === 'Approved' : true;
+  const isApproved = currentUser ? (currentUser.role === 'Admin' || currentUser.approvalStatus === 'Approved') : true;
 
   let navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: userRole === 'Admin' ? 'Admin Dashboard' : userRole === 'Employee' ? 'My Dashboard' : 'Company Dashboard', accent: '#4C9AFF' },

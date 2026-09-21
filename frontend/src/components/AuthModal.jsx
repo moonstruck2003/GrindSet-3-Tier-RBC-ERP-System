@@ -155,9 +155,9 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           role: role,
           designation: role === 'Employee' ? designation : null,
           hourlyRate: role === 'Employee' ? (parseFloat(hourlyRate) || 75.0) : 0,
-          companyName: (role === 'CompanyOwner' && companySignupType === 'new') ? companyName.trim() : null,
-          industry: (role === 'CompanyOwner' && companySignupType === 'new') ? industry.trim() : null,
-          companyId: (role === 'Employee' || (role === 'CompanyOwner' && companySignupType === 'existing')) ? (selectedCompanyId ? parseInt(selectedCompanyId) : null) : null
+          companyName: role === 'CompanyOwner' ? (companyName.trim() || `${fullName.trim()}'s Organization`) : null,
+          industry: role === 'CompanyOwner' ? (industry.trim() || 'Software & Cloud') : null,
+          companyId: role === 'Employee' ? (selectedCompanyId ? parseInt(selectedCompanyId) : null) : null
         };
 
         const res = await api.signup(payload);
@@ -474,140 +474,45 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
 
               {role === 'CompanyOwner' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {/* Signup Type Selection */}
-                  <div>
-                    <label className="gs-label" style={{ color: textMuted }}>Workspace Mode *</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => setCompanySignupType('new')}
-                        style={{
-                          padding: '9px 12px',
-                          borderRadius: 8,
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                          border: companySignupType === 'new' ? '1.5px solid #6366F1' : `1px solid ${border}`,
-                          background: companySignupType === 'new' ? 'rgba(99, 102, 241, 0.15)' : inputBg,
-                          color: companySignupType === 'new' ? '#818CF8' : textMuted,
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <Building2 className="w-4 h-4" />
-                        New Company
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCompanySignupType('existing')}
-                        style={{
-                          padding: '9px 12px',
-                          borderRadius: 8,
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 6,
-                          border: companySignupType === 'existing' ? '1.5px solid #6366F1' : `1px solid ${border}`,
-                          background: companySignupType === 'existing' ? 'rgba(99, 102, 241, 0.15)' : inputBg,
-                          color: companySignupType === 'existing' ? '#818CF8' : textMuted,
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <Shield className="w-4 h-4" />
-                        Existing Workspace
-                      </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label className="gs-label" style={{ color: textMuted }}>Company Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Apex Dynamics Ltd"
+                        className="gs-input"
+                        style={{ background: inputBg, color: textPrimary, borderColor: border }}
+                        value={companyName}
+                        onChange={e => setCompanyName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="gs-label" style={{ color: textMuted }}>Industry</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Software & Cloud"
+                        className="gs-input"
+                        style={{ background: inputBg, color: textPrimary, borderColor: border }}
+                        value={industry}
+                        onChange={e => setIndustry(e.target.value)}
+                      />
                     </div>
                   </div>
-
-                  {companySignupType === 'new' ? (
-                    <>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                        <div>
-                          <label className="gs-label" style={{ color: textMuted }}>Company Name *</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. Acme Corp"
-                            className="gs-input"
-                            style={{ background: inputBg, color: textPrimary, borderColor: border }}
-                            value={companyName}
-                            onChange={e => setCompanyName(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="gs-label" style={{ color: textMuted }}>Industry</label>
-                          <input
-                            type="text"
-                            placeholder="Software & Cloud"
-                            className="gs-input"
-                            style={{ background: inputBg, color: textPrimary, borderColor: border }}
-                            value={industry}
-                            onChange={e => setIndustry(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div style={{
-                        padding: '10px 12px',
-                        borderRadius: 8,
-                        background: 'rgba(16, 185, 129, 0.08)',
-                        border: '1px solid rgba(16, 185, 129, 0.25)',
-                        fontSize: '0.75rem',
-                        color: '#10B981',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8
-                      }}>
-                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                        <span><strong>Instant Provisioning:</strong> Immediate Active access with Community Free Plan (1 Project, up to 10 Employees) initialized.</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="gs-label" style={{ color: textMuted }}>Select Company Workspace to Claim *</label>
-                        <div style={{ position: 'relative' }}>
-                          <Building2 className="w-4 h-4" style={{ position: 'absolute', left: 12, top: 12, color: textMuted }} />
-                          <select
-                            className="gs-input"
-                            style={{ paddingLeft: 38, background: inputBg, color: textPrimary, borderColor: border, width: '100%', cursor: 'pointer' }}
-                            value={selectedCompanyId}
-                            onChange={e => setSelectedCompanyId(e.target.value)}
-                            required
-                          >
-                            {companyList.length > 0 ? (
-                              companyList.map(c => (
-                                <option key={c.companyId} value={c.companyId} style={{ background: inputBg, color: textPrimary }}>
-                                  {c.companyName} ({c.industry || 'Enterprise'})
-                                </option>
-                              ))
-                            ) : (
-                              <option value="1" style={{ background: inputBg, color: textPrimary }}>Acme Global Technologies</option>
-                            )}
-                          </select>
-                        </div>
-                      </div>
-                      <div style={{
-                        padding: '10px 12px',
-                        borderRadius: 8,
-                        background: 'rgba(245, 158, 11, 0.1)',
-                        border: '1px solid rgba(245, 158, 11, 0.3)',
-                        fontSize: '0.75rem',
-                        color: '#F59E0B',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8
-                      }}>
-                        <Shield className="w-4 h-4 flex-shrink-0" />
-                        <span><strong>Admin Verification Required:</strong> For corporate security, claiming ownership of an already registered enterprise company requires verification and approval from the System Administrator before access is granted.</span>
-                      </div>
-                    </>
-                  )}
+                  <div style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    fontSize: '0.75rem',
+                    color: '#F59E0B',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}>
+                    <Shield className="w-4 h-4 flex-shrink-0" />
+                    <span><strong>Security Verification:</strong> Newly registered companies require verification and approval from the System Administrator before enterprise dashboard features are unlocked.</span>
+                  </div>
                 </div>
               )}
 

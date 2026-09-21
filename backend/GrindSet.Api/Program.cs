@@ -158,6 +158,10 @@ app.MapGet("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princip
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<Project> query = db.Projects;
     if (auth.IsCompany || auth.IsEmployee)
@@ -203,6 +207,10 @@ app.MapGet("/api/projects/details", async (GrindSetDbContext db, ClaimsPrincipal
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<Project> projQuery = db.Projects;
     if (auth.IsCompany || auth.IsEmployee)
@@ -329,6 +337,10 @@ app.MapGet("/api/employees", async (GrindSetDbContext db, ClaimsPrincipal princi
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<Employee> empQuery = db.Employees;
     if (auth.IsCompany || auth.IsEmployee)
@@ -540,6 +552,10 @@ app.MapGet("/api/accounts", async (GrindSetDbContext db, ClaimsPrincipal princip
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<FinancialAccount> accQuery = db.FinancialAccounts;
     if (auth.IsCompany)
@@ -729,18 +745,10 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
         _ => "Employee"
     };
 
-    bool isExistingCompanyClaim = false;
-    if (dbRole == "Company" && dto.CompanyId.HasValue)
-    {
-        if (await db.Companies.AnyAsync(c => c.CompanyId == dto.CompanyId.Value))
-        {
-            isExistingCompanyClaim = true;
-        }
-    }
-
+    // Every new company registration starts as PendingAdmin until verified by System Admin
     string initialApproval = dbRole switch
     {
-        "Company" => isExistingCompanyClaim ? "PendingAdmin" : "Approved",
+        "Company" => "PendingAdmin",
         "Employee" => "PendingCompany",
         _ => "Approved"
     };
@@ -750,7 +758,7 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
         Email = cleanEmail,
         PasswordHash = HashPassword(dto.Password),
         Role = dbRole,
-        CompanyId = isExistingCompanyClaim ? dto.CompanyId.Value : null,
+        CompanyId = null,
         IsActive = true,
         ApprovalStatus = initialApproval,
         ReportedNote = dto.FullName.Trim()
@@ -764,55 +772,48 @@ app.MapPost("/api/auth/signup", async (GrindSetDbContext db, SignUpDto dto) =>
 
     if (dbRole == "Company")
     {
-        // Check if claiming/joining an existing company tenancy
-        if (isExistingCompanyClaim)
+        // Each new company owner registers their own clean, isolated company tenant
+        compId = user.UserId;
+        user.CompanyId = user.UserId;
+        var companyName = string.IsNullOrWhiteSpace(dto.CompanyName) ? $"{displayName}'s Organization" : dto.CompanyName.Trim();
+        var company = new Company
         {
-            compId = dto.CompanyId!.Value;
-            user.CompanyId = compId;
-            db.SecurityAuditLogs.Add(new SecurityAuditLog
-            {
-                UserId = user.UserId,
-                Action = "COMPANY_OWNER_CLAIM_PENDING_ADMIN",
-                TargetEntity = $"User:{user.Email} requested ownership of existing Company ID:{compId}",
-                EventTime = DateTime.UtcNow
-            });
-        }
-        else
+            CompanyId = user.UserId,
+            CompanyName = companyName,
+            RegistrationNo = $"REG-{Random.Shared.Next(100000, 999999)}",
+            Industry = string.IsNullOrWhiteSpace(dto.Industry) ? "Technology & Software" : dto.Industry.Trim(),
+            LicenseStatus = "PendingAdminApproval"
+        };
+        db.Companies.Add(company);
+
+        // Default executive department for this new company
+        db.Departments.Add(new Department
         {
-            compId = user.UserId;
-            user.CompanyId = user.UserId;
-            var companyName = string.IsNullOrWhiteSpace(dto.CompanyName) ? $"{displayName}'s Organization" : dto.CompanyName.Trim();
-            var company = new Company
-            {
-                CompanyId = user.UserId,
-                CompanyName = companyName,
-                RegistrationNo = $"REG-{Random.Shared.Next(100000, 999999)}",
-                Industry = string.IsNullOrWhiteSpace(dto.Industry) ? "Technology & Software" : dto.Industry.Trim(),
-                LicenseStatus = "Active"
-            };
-            db.Companies.Add(company);
+            CompanyId = user.UserId,
+            DepartmentName = "Executive & Operations"
+        });
 
-            // Default executive department
-            db.Departments.Add(new Department
-            {
-                CompanyId = user.UserId,
-                DepartmentName = "Executive & Operations"
-            });
+        // Default Community Free subscription with Pending status
+        db.Subscriptions.Add(new CompanySubscription
+        {
+            CompanyId = user.UserId,
+            PlanTier = "Free",
+            BillingCycle = "Monthly",
+            Price = 0.00m,
+            Status = "Pending",
+            PaymentMethod = "Default Free Tier",
+            CurrentPeriodStart = DateTime.UtcNow,
+            CurrentPeriodEnd = DateTime.UtcNow.AddYears(1),
+            CreatedAt = DateTime.UtcNow
+        });
 
-            // Default Community Free subscription
-            db.Subscriptions.Add(new CompanySubscription
-            {
-                CompanyId = user.UserId,
-                PlanTier = "Free",
-                BillingCycle = "Monthly",
-                Price = 0.00m,
-                Status = "Active",
-                PaymentMethod = "Default Free Tier",
-                CurrentPeriodStart = DateTime.UtcNow,
-                CurrentPeriodEnd = DateTime.UtcNow.AddYears(1),
-                CreatedAt = DateTime.UtcNow
-            });
-        }
+        db.SecurityAuditLogs.Add(new SecurityAuditLog
+        {
+            UserId = user.UserId,
+            Action = "COMPANY_REGISTRATION_PENDING_ADMIN",
+            TargetEntity = $"Company:{companyName} (Id:{user.UserId}) registered by Owner:{user.Email} - Awaiting Admin Verification",
+            EventTime = DateTime.UtcNow
+        });
     }
     else if (dbRole == "Admin")
     {
@@ -2047,6 +2048,10 @@ app.MapGet("/api/tasks", async (GrindSetDbContext db, ClaimsPrincipal principal,
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<TaskItem> taskQuery = db.Tasks;
     if (auth.IsCompany)
@@ -2890,11 +2895,13 @@ static async Task<AuthUserContext> GetAuthContextAsync(ClaimsPrincipal? principa
         companyId = cid;
     }
 
+    var userEntity = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
+    string approvalStatus = userEntity?.ApprovalStatus ?? "Approved";
+
     if (role == "Company")
     {
         if (!companyId.HasValue)
         {
-            var userEntity = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId);
             companyId = userEntity?.CompanyId ?? userId;
         }
     }
@@ -2908,7 +2915,7 @@ static async Task<AuthUserContext> GetAuthContextAsync(ClaimsPrincipal? principa
         }
     }
 
-    return new AuthUserContext(true, userId, role, companyId, employeeId);
+    return new AuthUserContext(true, userId, role, companyId, employeeId, approvalStatus);
 }
 
 static async Task<TierLimits> GetCompanyTierLimitsAsync(GrindSetDbContext db, int companyId)
@@ -2946,9 +2953,10 @@ public record TierLimits(string Tier, int? MaxProjects, int? MaxEmployees);
 public record SendChatMessageDto(string MessageText);
 
 // Auth Context
-public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int? CompanyId, int? EmployeeId)
+public record AuthUserContext(bool IsAuthenticated, int UserId, string Role, int? CompanyId, int? EmployeeId, string ApprovalStatus = "Approved")
 {
     public bool IsAdmin => Role == "Admin";
     public bool IsCompany => Role == "Company";
     public bool IsEmployee => Role == "Employee";
+    public bool IsApproved => ApprovalStatus == "Approved";
 }
