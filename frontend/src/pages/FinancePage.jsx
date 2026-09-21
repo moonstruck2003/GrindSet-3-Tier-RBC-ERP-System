@@ -62,7 +62,7 @@ export default function FinancePage({ lightMode }) {
   }, []);
 
   const userRole = user?.role || 'Company';
-  const isCfoScope = userRole === 'Admin' || userRole === 'Company';
+  const isCfoScope = userRole === 'Company';
   const managedProjects = projects.filter(p => p.isManager || p.IsManager || Number(p.projectManagerId || p.ProjectManagerId) === Number(user?.userId));
   const managedProjectIds = new Set(managedProjects.map(p => Number(p.projectId || p.ProjectId)));
   const isPM = managedProjects.length > 0;

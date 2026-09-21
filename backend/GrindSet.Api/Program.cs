@@ -182,7 +182,7 @@ app.MapGet("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princip
     var result = projectsList.Select(p =>
     {
         bool isPM = auth.IsEmployee && p.ProjectManagerId == empId;
-        bool isMember = auth.IsCompany || auth.IsAdmin || (auth.IsEmployee && (isPM || userAssignments.Contains(p.ProjectId)));
+        bool isMember = !auth.IsAdmin && (auth.IsCompany || (auth.IsEmployee && (isPM || userAssignments.Contains(p.ProjectId))));
         string pmName = (p.ProjectManagerId.HasValue && pmNames.TryGetValue(p.ProjectManagerId.Value, out var name)) ? name : "Unassigned";
 
         return new
@@ -196,7 +196,7 @@ app.MapGet("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princip
             ProjectManagerName = pmName,
             IsManager = isPM,
             IsMember = isMember,
-            AccessLevel = isPM ? "Manager" : isMember ? "Member" : "Basic"
+            AccessLevel = auth.IsAdmin ? "Admin" : isPM ? "Manager" : isMember ? "Member" : "Basic"
         };
     });
 
@@ -458,6 +458,10 @@ app.MapGet("/api/transactions", async (GrindSetDbContext db, ClaimsPrincipal pri
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<Transaction> txQuery = db.Transactions;
     if (auth.IsEmployee)
@@ -505,12 +509,14 @@ app.MapPost("/api/transactions", async (GrindSetDbContext db, ClaimsPrincipal pr
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var acc = await db.FinancialAccounts.FindAsync(dto.AccountId);
     if (acc == null) return Results.NotFound("Financial Account not found");
 
     var proj = await db.Projects.FindAsync(acc.ProjectId);
-    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    if (proj == null || proj.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -603,6 +609,10 @@ app.MapGet("/api/audit-logs", async (GrindSetDbContext db, ClaimsPrincipal princ
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<SecurityAuditLog> logQuery = db.SecurityAuditLogs;
     if (auth.IsEmployee)
@@ -636,6 +646,10 @@ app.MapGet("/api/assignments", async (GrindSetDbContext db, ClaimsPrincipal prin
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Ok(new List<object>());
+    }
 
     IQueryable<ProjectAssignment> assignQuery = db.ProjectAssignments;
     if (auth.IsCompany || auth.IsEmployee)
@@ -1467,11 +1481,12 @@ app.MapPost("/api/company/approve-employee/{employeeId:int}", async (GrindSetDbC
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
+    if (!auth.IsCompany) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == employeeId);
     if (emp == null) return Results.NotFound(new { message = "Employee not found." });
-    if (!auth.IsAdmin && emp.CompanyId != auth.CompanyId) return Results.Forbid();
+    if (emp.CompanyId != auth.CompanyId) return Results.Forbid();
 
     int targetCompanyId = emp.CompanyId;
     var limits = await GetCompanyTierLimitsAsync(db, targetCompanyId);
@@ -1517,11 +1532,12 @@ app.MapPost("/api/company/reject-employee/{employeeId:int}", async (GrindSetDbCo
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
+    if (!auth.IsCompany) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var emp = await db.Employees.FirstOrDefaultAsync(e => e.EmployeeId == employeeId);
     if (emp == null) return Results.NotFound(new { message = "Employee not found." });
-    if (!auth.IsAdmin && emp.CompanyId != auth.CompanyId) return Results.Forbid();
+    if (emp.CompanyId != auth.CompanyId) return Results.Forbid();
 
     var user = await db.Users.FirstOrDefaultAsync(u => u.UserId == employeeId && u.Role == "Employee");
     if (user == null) return Results.NotFound(new { message = "Employee user not found." });
@@ -1591,14 +1607,15 @@ app.MapPost("/api/projects", async (GrindSetDbContext db, ClaimsPrincipal princi
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
+    if (!auth.IsCompany) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification. You cannot create projects until approved." });
 
     if (string.IsNullOrWhiteSpace(dto.ProjectName))
     {
         return Results.BadRequest(new { message = "Project Name is required." });
     }
 
-    int companyId = auth.IsCompany ? auth.CompanyId!.Value : (dto.CompanyId > 0 ? dto.CompanyId : 1);
+    int companyId = auth.CompanyId ?? auth.UserId;
 
     // Check tier limits for company
     var limits = await GetCompanyTierLimitsAsync(db, companyId);
@@ -1689,12 +1706,13 @@ app.MapPost("/api/projects/{id:int}/assign-manager", async (GrindSetDbContext db
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid(); // Only Company Owner or Admin can assign PM
+    if (!auth.IsCompany) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var project = await db.Projects.FindAsync(id);
     if (project == null) return Results.NotFound(new { message = "Project not found." });
 
-    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId)
+    if (project.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -1778,11 +1796,13 @@ app.MapPost("/api/projects/{id:int}/members", async (GrindSetDbContext db, Claim
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var project = await db.Projects.FindAsync(id);
     if (project == null) return Results.NotFound(new { message = "Project not found." });
 
-    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId)
+    if (project.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -1849,11 +1869,13 @@ app.MapDelete("/api/projects/{id:int}/members/{employeeId:int}", async (GrindSet
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var project = await db.Projects.FindAsync(id);
     if (project == null) return Results.NotFound(new { message = "Project not found." });
 
-    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId)
+    if (project.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2110,6 +2132,8 @@ app.MapPost("/api/tasks", async (GrindSetDbContext db, ClaimsPrincipal principal
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     if (string.IsNullOrWhiteSpace(dto.Title))
     {
@@ -2127,7 +2151,7 @@ app.MapPost("/api/tasks", async (GrindSetDbContext db, ClaimsPrincipal principal
         return Results.BadRequest(new { message = "Invalid Project ID. Every task must be bound to a specific project." });
     }
 
-    if (!auth.IsAdmin && (project.CompanyId != auth.CompanyId))
+    if (project.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2217,12 +2241,14 @@ app.MapPut("/api/tasks/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal p
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var task = await db.Tasks.FindAsync(id);
     if (task == null) return Results.NotFound(new { message = "Task not found." });
 
     var project = await db.Projects.FindAsync(task.ProjectId);
-    if (!auth.IsAdmin && (project == null || project.CompanyId != auth.CompanyId))
+    if (project == null || project.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2272,7 +2298,7 @@ app.MapPut("/api/tasks/{id:int}", async (GrindSetDbContext db, ClaimsPrincipal p
     if (dto.ProjectId.HasValue && dto.ProjectId.Value > 0)
     {
         var newProj = await db.Projects.FindAsync(dto.ProjectId.Value);
-        if (newProj != null && (auth.IsAdmin || newProj.CompanyId == auth.CompanyId))
+        if (newProj != null && newProj.CompanyId == auth.CompanyId)
         {
             task.ProjectId = dto.ProjectId.Value;
         }
@@ -2287,12 +2313,14 @@ app.MapDelete("/api/tasks/{id:int}", async (GrindSetDbContext db, ClaimsPrincipa
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Organization workspace pending administrator verification." });
 
     var task = await db.Tasks.FindAsync(id);
     if (task == null) return Results.NotFound(new { message = "Task not found." });
 
     var project = await db.Projects.FindAsync(task.ProjectId);
-    if (!auth.IsAdmin && (project == null || project.CompanyId != auth.CompanyId))
+    if (project == null || project.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2307,6 +2335,8 @@ app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, ClaimsPrincipa
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Account must be approved to create financial accounts." });
 
     if (string.IsNullOrWhiteSpace(dto.AccountName))
     {
@@ -2315,7 +2345,7 @@ app.MapPost("/api/finance/accounts", async (GrindSetDbContext db, ClaimsPrincipa
 
     var project = await db.Projects.FindAsync(dto.ProjectId);
     if (project == null) return Results.BadRequest(new { message = "Project not found." });
-    if (!auth.IsAdmin && project.CompanyId != auth.CompanyId) return Results.Forbid();
+    if (project.CompanyId != auth.CompanyId) return Results.Forbid();
 
     if (auth.IsEmployee)
     {
@@ -2354,6 +2384,8 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, ClaimsPrinci
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Account must be approved to reallocate funds." });
 
     if (dto.Amount <= 0) return Results.BadRequest(new { message = "Reallocation amount must be greater than zero." });
     if (string.IsNullOrWhiteSpace(dto.Reason)) return Results.BadRequest(new { message = "Reason is required for audit reallocation." });
@@ -2373,7 +2405,7 @@ app.MapPost("/api/finance/reallocate", async (GrindSetDbContext db, ClaimsPrinci
     var srcProj = await db.Projects.FindAsync(source.ProjectId);
     var tgtProj = await db.Projects.FindAsync(target.ProjectId);
 
-    if (!auth.IsAdmin && (srcProj == null || srcProj.CompanyId != auth.CompanyId || tgtProj == null || tgtProj.CompanyId != auth.CompanyId))
+    if (srcProj == null || srcProj.CompanyId != auth.CompanyId || tgtProj == null || tgtProj.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2426,6 +2458,8 @@ app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ClaimsPri
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Account must be approved to submit expense claims." });
 
     if (dto.Amount <= 0) return Results.BadRequest(new { message = "Claim amount must be greater than zero." });
     if (string.IsNullOrWhiteSpace(dto.Type)) return Results.BadRequest(new { message = "Expense type is required." });
@@ -2434,7 +2468,7 @@ app.MapPost("/api/finance/expense-claim", async (GrindSetDbContext db, ClaimsPri
     if (account == null) return Results.BadRequest(new { message = "Financial account not found." });
 
     var proj = await db.Projects.FindAsync(account.ProjectId);
-    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    if (proj == null || proj.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2472,6 +2506,8 @@ app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Account must be approved to approve expenses." });
 
     var tx = await db.Transactions.FindAsync(id);
     if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
@@ -2479,7 +2515,7 @@ app.MapPost("/api/finance/approve-expense/{id:int}", async (GrindSetDbContext db
     var account = await db.FinancialAccounts.FindAsync(tx.AccountId);
     var proj = account != null ? await db.Projects.FindAsync(account.ProjectId) : null;
 
-    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    if (proj == null || proj.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2518,6 +2554,8 @@ app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db,
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+    if (auth.IsAdmin) return Results.Forbid();
+    if (!auth.IsApproved) return Results.BadRequest(new { message = "Account must be approved to reject expenses." });
 
     var tx = await db.Transactions.FindAsync(id);
     if (tx == null) return Results.NotFound(new { message = "Transaction not found." });
@@ -2525,7 +2563,7 @@ app.MapPost("/api/finance/reject-expense/{id:int}", async (GrindSetDbContext db,
     var account = await db.FinancialAccounts.FindAsync(tx.AccountId);
     var proj = account != null ? await db.Projects.FindAsync(account.ProjectId) : null;
 
-    if (!auth.IsAdmin && (proj == null || proj.CompanyId != auth.CompanyId))
+    if (proj == null || proj.CompanyId != auth.CompanyId)
     {
         return Results.Forbid();
     }
@@ -2558,6 +2596,11 @@ app.MapGet("/api/finance/export/csv", async (GrindSetDbContext db, ClaimsPrincip
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
+
+    if ((auth.IsCompany || auth.IsEmployee) && !auth.IsApproved)
+    {
+        return Results.Text("TransactionID,Account,LoggedBy,Type,Amount,Status,Note,TransactionDate\r\n", "text/csv");
+    }
 
     IQueryable<Transaction> txQuery = db.Transactions;
     if (auth.IsEmployee)

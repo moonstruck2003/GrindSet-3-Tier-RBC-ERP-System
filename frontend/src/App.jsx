@@ -50,7 +50,7 @@ export default function App() {
         <Route path="/dashboard" element={<RoleBasedDashboard lightMode={lightMode} />} />
         <Route path="/workforce" element={<RoleGuard allowedRoles={['Admin', 'Company']} lightMode={lightMode}><WorkforcePage lightMode={lightMode} /></RoleGuard>} />
         <Route path="/projects"  element={<ProjectsPage lightMode={lightMode} />} />
-        <Route path="/finance"   element={<FinancePage lightMode={lightMode} />} />
+        <Route path="/finance"   element={<RoleGuard allowedRoles={['Company', 'Employee']} lightMode={lightMode}><FinancePage lightMode={lightMode} /></RoleGuard>} />
         <Route path="/audit"     element={<RoleGuard allowedRoles={['Admin', 'Company']} lightMode={lightMode}><AuditPage lightMode={lightMode} /></RoleGuard>} />
         <Route path="/billing"   element={<RoleGuard allowedRoles={['Company']} lightMode={lightMode}><SubscriptionPage lightMode={lightMode} /></RoleGuard>} />
         <Route path="/reset-password" element={<ResetPasswordPage lightMode={lightMode} />} />

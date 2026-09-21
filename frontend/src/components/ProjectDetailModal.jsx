@@ -38,7 +38,7 @@ export default function ProjectDetailModal({ isOpen, onClose, project, accounts 
   const isAdmin = user?.role === 'Admin';
   const isCompany = user?.role === 'Company';
   const isPM = (pmId && Number(pmId) === Number(user?.userId)) || project.isManager || project.IsManager;
-  const isMember = isCompany || isPM || project.isMember || project.IsMember || members.some(m => Number(m.employeeId || m.EmployeeId) === Number(user?.userId));
+  const isMember = !isAdmin && (isCompany || isPM || project.isMember || project.IsMember || members.some(m => Number(m.employeeId || m.EmployeeId) === Number(user?.userId)));
   const canManageTeam = !isAdmin && (isCompany || isPM);
 
   const loadMembers = async () => {
