@@ -329,21 +329,23 @@ export default function AppShell({ children, lightMode, setLightMode }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
 
-            {/* 1. GLOBAL + NEW ACTION LAUNCHER BUTTON (Jira & Monday Standard) */}
-            <button
-              onClick={() => { setCreateTab('task'); setCreateModalOpen(true); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 16px', borderRadius: 10,
-                background: '#0052CC', color: 'white',
-                border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                boxShadow: '0 4px 14px rgba(0,82,204,0.3)', transition: 'all 0.15s'
-              }}
-              title="Create New Task, Project, or Asset"
-            >
-              <Plus style={{ width: 16, height: 16 }} />
-              <span>New</span>
-            </button>
+            {/* 1. GLOBAL + NEW ACTION LAUNCHER BUTTON (Jira & Monday Standard - Tenant Roles only) */}
+            {userRole !== 'Admin' && (
+              <button
+                onClick={() => { setCreateTab('task'); setCreateModalOpen(true); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '8px 16px', borderRadius: 10,
+                  background: '#0052CC', color: 'white',
+                  border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                  boxShadow: '0 4px 14px rgba(0,82,204,0.3)', transition: 'all 0.15s'
+                }}
+                title="Create New Task, Project, or Asset"
+              >
+                <Plus style={{ width: 16, height: 16 }} />
+                <span>New</span>
+              </button>
+            )}
 
             {/* 2. COMMAND PALETTE CTRL+K SEARCH BUTTON (Linear & Stripe Standard) */}
             <button

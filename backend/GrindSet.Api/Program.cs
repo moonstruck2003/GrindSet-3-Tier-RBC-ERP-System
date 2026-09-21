@@ -351,12 +351,15 @@ app.MapGet("/api/employees", async (GrindSetDbContext db, ClaimsPrincipal princi
 
     var employees = await (from emp in empQuery
                            join u in db.Users on emp.EmployeeId equals u.UserId
+                           join c in db.Companies on emp.CompanyId equals c.CompanyId into compGroup
+                           from c in compGroup.DefaultIfEmpty()
                            join dept in db.Departments on emp.DepartmentId equals dept.DepartmentId into deptGroup
                            from dept in deptGroup.DefaultIfEmpty()
                            select new
                            {
                                emp.EmployeeId,
                                emp.CompanyId,
+                               CompanyName = c != null ? c.CompanyName : "Workspace #" + emp.CompanyId,
                                emp.FullName,
                                emp.Designation,
                                emp.HourlyRate,
@@ -371,9 +374,16 @@ app.MapPost("/api/employees", async (GrindSetDbContext db, ClaimsPrincipal princ
 {
     var auth = await GetAuthContextAsync(principal, db);
     if (!auth.IsAuthenticated) return Results.Unauthorized();
-    if (auth.IsEmployee) return Results.Forbid();
+    if (!auth.IsCompany)
+    {
+        return Results.Json(new { message = "Only verified Company Owners can onboard employees to their organization workspace. Platform Administrators cannot onboard employees." }, statusCode: 403);
+    }
+    if (!auth.IsApproved)
+    {
+        return Results.BadRequest(new { message = "Your organization workspace is awaiting administrator verification. You cannot onboard employees until approved." });
+    }
 
-    int compId = auth.IsCompany ? auth.CompanyId!.Value : 1;
+    int compId = auth.CompanyId ?? auth.UserId;
 
     // Check tier limits for company
     var limits = await GetCompanyTierLimitsAsync(db, compId);

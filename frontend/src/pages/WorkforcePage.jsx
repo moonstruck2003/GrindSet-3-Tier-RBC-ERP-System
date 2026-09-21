@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, Search, Mail, X, Check, Users } from 'lucide-react';
+import { UserPlus, Search, Mail, X, Check, Users, Building2, Trash2, ShieldAlert } from 'lucide-react';
 import { api } from '../config/api';
 import { useTheme } from '../config/theme';
 
@@ -9,6 +9,18 @@ const ACCENT_COLORS = ['#4C9AFF','#57D9A3','#FFDA75','#BF9AFF','#FF8F73','#79E8F
 
 export default function WorkforcePage({ lightMode }) {
   const T = useTheme(lightMode);
+  const [currentUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('grindset_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const isCompany = currentUser?.role === 'Company';
+  const isAdmin = currentUser?.role === 'Admin';
+
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -21,16 +33,20 @@ export default function WorkforcePage({ lightMode }) {
   const load = () => {
     setLoading(true);
     api.employees().then(setEmployees).catch(() => setEmployees([])).finally(() => setLoading(false));
-    api.currentSubscription().then(data => {
-      if (data?.usage) setUsage(data.usage);
-    }).catch(() => {});
+    if (isCompany) {
+      api.currentSubscription().then(data => {
+        if (data?.usage) setUsage(data.usage);
+      }).catch(() => {});
+    }
   };
+
   useEffect(() => { load(); }, []);
 
   const filtered = employees.filter(e =>
     e.fullName?.toLowerCase().includes(search.toLowerCase()) ||
     e.designation?.toLowerCase().includes(search.toLowerCase()) ||
-    e.email?.toLowerCase().includes(search.toLowerCase())
+    e.email?.toLowerCase().includes(search.toLowerCase()) ||
+    (e.companyName && e.companyName.toLowerCase().includes(search.toLowerCase()))
   );
 
   const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 3200); };
@@ -49,6 +65,17 @@ export default function WorkforcePage({ lightMode }) {
       showToast(err.message || 'Failed to onboard employee.', false);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteEmployee = async (employeeId, name) => {
+    if (!window.confirm(`Are you sure you want to permanently remove employee "${name}" from the system?`)) return;
+    try {
+      const res = await api.deleteEmployee(employeeId);
+      showToast(res?.message || 'Employee removed successfully.');
+      load();
+    } catch (err) {
+      showToast(err.message || 'Failed to remove employee.', false);
     }
   };
 
@@ -76,10 +103,12 @@ export default function WorkforcePage({ lightMode }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: 22, fontWeight: 900, color: T.textPri, margin: 0 }}>
-              Workforce{' '}
-              <span style={{ background: 'linear-gradient(135deg,#79F2C0,#36B37E)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Directory</span>
+              {isAdmin ? 'Employee ' : 'Workforce '}
+              <span style={{ background: 'linear-gradient(135deg,#79F2C0,#36B37E)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                {isAdmin ? 'Oversight' : 'Directory'}
+              </span>
             </h2>
-            {usage && (
+            {isCompany && usage && (
               <span style={{
                 fontSize: 11,
                 fontWeight: 800,
@@ -94,25 +123,47 @@ export default function WorkforcePage({ lightMode }) {
                 {usage.maxEmployees ? `Seats: ${usage.employeesCount} / ${usage.maxEmployees} (${usage.tier})` : `Seats: ${usage.employeesCount} (Unlimited)`}
               </span>
             )}
+            {isAdmin && (
+              <span style={{
+                fontSize: 11,
+                fontWeight: 800,
+                padding: '3px 10px',
+                borderRadius: 999,
+                background: 'rgba(0,82,204,0.12)',
+                color: '#4C9AFF',
+                border: '1px solid rgba(0,82,204,0.25)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5
+              }}>
+                <ShieldAlert style={{ width: 12, height: 12 }} /> Governance Directory Only
+              </span>
+            )}
           </div>
           <p style={{ fontSize: 13, color: T.textMut, marginTop: 4 }}>
-            {employees.length} employee{employees.length !== 1 ? 's' : ''} registered across all departments
+            {isAdmin
+              ? `Cross-tenant workforce directory (${employees.length} employee${employees.length !== 1 ? 's' : ''} across registered organizations)`
+              : `${employees.length} employee${employees.length !== 1 ? 's' : ''} registered across your departments`}
           </p>
         </div>
-        <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-          onClick={() => setShowForm(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 11,
-            background: 'linear-gradient(135deg,#0065FF,#0052CC)', color: 'white', fontWeight: 700,
-            fontSize: 13, border: 'none', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,82,204,0.35)' }}>
-          <UserPlus style={{ width: 15, height: 15 }} /> Onboard Employee
-        </motion.button>
+
+        {/* ONLY Company Owners can onboard employees to their organization */}
+        {isCompany && (
+          <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+            onClick={() => setShowForm(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 11,
+              background: 'linear-gradient(135deg,#0065FF,#0052CC)', color: 'white', fontWeight: 700,
+              fontSize: 13, border: 'none', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,82,204,0.35)' }}>
+            <UserPlus style={{ width: 15, height: 15 }} /> Onboard Employee
+          </motion.button>
+        )}
       </div>
 
       {/* Search */}
       <div style={{ position: 'relative' }}>
         <Search style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: T.textMut }} />
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, role, or email…"
+          placeholder={isAdmin ? "Search by employee name, role, email, or company…" : "Search by name, role, or email…"}
           style={{ ...inputStyle, paddingLeft: 36 }} />
       </div>
 
@@ -128,15 +179,25 @@ export default function WorkforcePage({ lightMode }) {
           <div style={{ padding: '64px 24px', textAlign: 'center' }}>
             <Users style={{ width: 40, height: 40, color: T.textMut, margin: '0 auto 12px' }} />
             <p style={{ fontWeight: 700, color: T.textPri, marginBottom: 6 }}>No employees found</p>
-            <p style={{ fontSize: 13, color: T.textMut }}>Try a different search or onboard a new employee.</p>
+            <p style={{ fontSize: 13, color: T.textMut }}>
+              {isAdmin ? 'No employees currently registered across organizations.' : 'Try a different search or onboard a new employee.'}
+            </p>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.divider}` }}>
-                  {['Employee', 'Designation', 'Department', 'Email', 'Hourly Rate'].map(h => (
-                    <th key={h} style={{ padding: '11px 16px', textAlign: h === 'Hourly Rate' ? 'right' : 'left',
+                  {[
+                    'Employee',
+                    ...(isAdmin ? ['Company Tenant'] : []),
+                    'Designation',
+                    'Department',
+                    'Email',
+                    'Hourly Rate',
+                    ...(isAdmin ? ['Admin Actions'] : [])
+                  ].map(h => (
+                    <th key={h} style={{ padding: '11px 16px', textAlign: h === 'Hourly Rate' ? 'right' : h === 'Admin Actions' ? 'center' : 'left',
                       fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.textMut, whiteSpace: 'nowrap' }}>
                       {h}
                     </th>
@@ -160,6 +221,17 @@ export default function WorkforcePage({ lightMode }) {
                         <span style={{ fontWeight: 600, color: T.textPri }}>{emp.fullName}</span>
                       </div>
                     </td>
+
+                    {isAdmin && (
+                      <td style={{ padding: '13px 16px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                          background: 'rgba(255,218,117,0.12)', color: '#FFDA75', border: '1px solid rgba(255,218,117,0.25)' }}>
+                          <Building2 style={{ width: 11, height: 11 }} />
+                          {emp.companyName || `Workspace #${emp.companyId}`}
+                        </span>
+                      </td>
+                    )}
+
                     <td style={{ padding: '13px 16px' }}>
                       <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 700,
                         background: 'rgba(0,82,204,0.12)', color: '#4C9AFF', border: '1px solid rgba(0,82,204,0.25)' }}>
@@ -178,6 +250,31 @@ export default function WorkforcePage({ lightMode }) {
                         ${Number(emp.hourlyRate).toFixed(2)}<span style={{ fontSize: 10, fontWeight: 500 }}>/hr</span>
                       </span>
                     </td>
+
+                    {isAdmin && (
+                      <td style={{ padding: '13px 16px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleDeleteEmployee(emp.employeeId, emp.fullName)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '5px 10px',
+                            borderRadius: 8,
+                            background: 'rgba(255,86,48,0.12)',
+                            color: '#FF5630',
+                            border: '1px solid rgba(255,86,48,0.25)',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s'
+                          }}
+                          title={`Permanently remove ${emp.fullName} from platform`}
+                        >
+                          <Trash2 style={{ width: 12, height: 12 }} /> Remove
+                        </button>
+                      </td>
+                    )}
                   </motion.tr>
                 ))}
               </tbody>
@@ -186,9 +283,9 @@ export default function WorkforcePage({ lightMode }) {
         )}
       </motion.div>
 
-      {/* Onboard Modal */}
+      {/* Onboard Modal - STRICTLY for Company Owners */}
       <AnimatePresence>
-        {showForm && (
+        {isCompany && showForm && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}>
             <motion.div initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.93, opacity: 0 }}
               style={{ width: '100%', maxWidth: 420, borderRadius: 20, overflow: 'hidden',
